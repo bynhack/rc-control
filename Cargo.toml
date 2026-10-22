@@ -1,0 +1,19 @@
+[package]
+name = "rc-control"
+version = "0.1.0"
+edition = "2021"
+description = "PC-side controller for RC cars over ExpressLRS (CRSF) or MR-RC2"
+license = "GPL-3.0-only"
+
+[dependencies]
+anyhow = "1"
+ctrlc = "3"
+eframe = "0.31"
+ffmpeg-next = { version = "9", default-features = false, features = ["codec", "format", "software-scaling"] }
+serde = { version = "1", features = ["derive"] }
+serialport = { version = "4", default-features = false }
+toml = "0.8"
+
+[profile.release]
+lto = true
+strip = true

@@ -1,0 +1,40 @@
+# 复制成 rc-control.toml 再改。没有这个文件时全部用默认值。
+
+# 启动时使用的方案：elrs 或 rc2。窗口里可以随时切换。
+backend = "elrs"
+
+# 输入超过这么久没更新，就当作输入丢失：输出回中、油门重新锁定。
+heartbeat_timeout_ms = 300
+
+[elrs]
+# auto 按 USB 芯片自动找高频头（CH9102，1a86:55d4）。
+# 也可以写死，例如 macOS "/dev/cu.usbserial-5C7A1709251"、Windows "COM5"。
+port = "auto"
+# 改过 USB 引脚的 AION Nano 只在 115200 上应答。
+baud = 115200
+# 每隔多少毫秒发一帧通道。
+frame_interval_ms = 20
+# 通道号从 1 开始。只用 1 到 4：5 以上是低精度开关通道。
+steering_channel = 1
+throttle_channel = 2
+steering_invert = false
+throttle_invert = false
+
+[rc2]
+# auto 按 USB 芯片找 CH340（1a86:7523），再核对设备型号。
+port = "auto"
+baud = 460800
+steering_invert = false
+throttle_invert = false
+# 设备端油门变化速率限制，防止扭矩突变。
+throttle_rate = 3.0
+# 值没变化时，隔这么久重写一次。
+refresh_ms = 250
+
+[video]
+# 图传。收到画面时界面切到图传样式，没有画面时是仪表盘。
+enabled = true
+# 接收 RTP 视频的 UDP 端口。用 Aviateur 收图传时，把它的转发端口设成这个。
+port = 5600
+# 视频编码：h265（OpenIPC 默认）或 h264。
+codec = "h265"
