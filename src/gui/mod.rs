@@ -7,15 +7,15 @@ mod dev;
 mod theme;
 mod widgets;
 
-use crate::backend::{Invert, Runner, Shared, Status};
-use crate::config::{BackendKind, Config};
+use crate::backend::{Invert, Shared, Status};
+use crate::config::Config;
 use crate::control::{ControlView, Speed};
 use crate::{radio, video};
 use eframe::egui::{
     self, pos2, vec2, Align2, Color32, Key, Modifiers, Painter, Rect, Sense, Stroke, StrokeKind, Ui, ViewportCommand,
 };
 use std::collections::VecDeque;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 use theme::*;
 use widgets::*;
@@ -51,8 +51,6 @@ mod deadzone_tests {
     }
 }
 
-/// RC2 `Status` bits.
-const LIGHTS: [(&str, u8); 3] = [("示宽灯", 0x2), ("近光灯", 0x4), ("鸣笛", 0x8)];
 
 /// Display values eased toward their targets, so the dash moves smoothly.
 /// Numeric readouts always show the exact values.
@@ -68,16 +66,14 @@ pub struct Gui {
     /// Where direction changes are saved.
     config_path: std::path::PathBuf,
     shared: Arc<Shared>,
-    runner: Arc<Mutex<Runner>>,
     /// Input positions, -1..=1.
     steering: f32,
     throttle: f32,
-    lights: u8,
     arm_confirm_until: Option<Instant>,
     note: Option<(String, Instant)>,
     estop_flash: Option<Instant>,
     anim: Anim,
-    /// (uplink, downlink) quality 0..=1; RC2 fills both with its signal.
+    /// (uplink, downlink) link quality, 0..=1.
     history: VecDeque<(f32, f32)>,
     last_sample: Instant,
     video: Arc<video::Shared>,
@@ -94,7 +90,6 @@ impl Gui {
         cfg: Config,
         config_path: std::path::PathBuf,
         shared: Arc<Shared>,
-        runner: Arc<Mutex<Runner>>,
         video: Arc<video::Shared>,
         radio: Arc<radio::Shared>,
     ) -> Self {
@@ -111,10 +106,8 @@ impl Gui {
             cfg,
             config_path,
             shared,
-            runner,
             steering: 0.0,
             throttle: 0.0,
-            lights: 0,
             arm_confirm_until: None,
             note: wheel_error.map(|e| (e, now)),
             estop_flash: None,
@@ -130,27 +123,12 @@ impl Gui {
         }
     }
 
-    fn kind(&self) -> BackendKind {
-        self.runner.lock().unwrap_or_else(|e| e.into_inner()).kind
-    }
-
     fn estop(&mut self) {
         self.steering = 0.0;
         self.throttle = 0.0;
         self.arm_confirm_until = None;
         self.estop_flash = Some(Instant::now());
         self.shared.control().estop();
-    }
-
-    fn switch_backend(&mut self, kind: BackendKind) {
-        let mut runner = self.runner.lock().unwrap_or_else(|e| e.into_inner());
-        if runner.kind == kind {
-            return;
-        }
-        self.shared.control().disarm("切换了控制方案");
-        self.history.clear();
-        runner.stop();
-        *runner = Runner::start(kind, &self.cfg, self.shared.clone());
     }
 
     /// Arming takes two clicks within `ARM_CONFIRM`; disarming takes one.
@@ -200,7 +178,6 @@ impl eframe::App for Gui {
         {
             let mut c = self.shared.control();
             c.input(self.steering, self.throttle, now);
-            c.set_lights(self.lights);
             if let Some(d) = demo.as_ref().filter(|d| d.arm) {
                 if let Some(s) = d.speed {
                     c.set_speed(s);
@@ -210,7 +187,6 @@ impl eframe::App for Gui {
         }
         let view = self.shared.control().view(now);
         let status = self.shared.status().clone();
-        let kind = self.kind();
         if self.arm_confirm_until.is_some_and(|t| now > t) {
             self.arm_confirm_until = None;
         }
@@ -220,10 +196,7 @@ impl eframe::App for Gui {
 
         if now.duration_since(self.last_sample) >= HISTORY_EVERY {
             self.last_sample = now;
-            let sample = match kind {
-                BackendKind::Elrs => status.link.map(|l| (l.up_lq as f32 / 100.0, l.down_lq as f32 / 100.0)),
-                BackendKind::Rc2 => status.telemetry.get("Signal").copied().flatten().map(|s| (s / 5.0, s / 5.0)),
-            };
+            let sample = status.link.map(|l| (l.up_lq as f32 / 100.0, l.down_lq as f32 / 100.0));
             if self.history.len() == HISTORY_LEN {
                 self.history.pop_front();
             }
@@ -261,7 +234,7 @@ impl eframe::App for Gui {
             if drag.drag_started() {
                 ctx.send_viewport_cmd(ViewportCommand::StartDrag);
             }
-            self.top_bar(ui, &p, top, kind, &status, &view, time);
+            self.top_bar(ui, &p, top, &status, &view, time);
 
             let (pad, gap, input_h) = (16.0, 14.0, 150.0);
             let content = Rect::from_min_max(
@@ -275,13 +248,13 @@ impl eframe::App for Gui {
             let center = Rect::from_min_max(pos2(left.right() + gap, main.top()), pos2(right.left() - gap, main.bottom()));
 
             let radio = self.radio.status().clone();
-            link_panel(&p, left, kind, &status, &view, &radio, &self.history, time);
+            link_panel(&p, left, &status, &view, &radio, &self.history, time);
             // Video style while frames arrive, the gauge dashboard otherwise.
             match (&self.video_tex, live) {
                 (Some(tex), true) => self.video_panel(&p, center, tex.id(), &vstats, &view, time),
                 _ => self.drive_panel(&p, center, &view, time),
             }
-            self.control_panel(ui, &p, right, kind, &status, &view, time);
+            self.control_panel(ui, &p, right, &status, &view, time);
             self.input_panel(ui, &p, input);
 
             if let Some(t) = self.estop_flash {
@@ -305,7 +278,7 @@ impl eframe::App for Gui {
 
 impl Gui {
     #[allow(clippy::too_many_arguments)]
-    fn top_bar(&mut self, ui: &mut Ui, p: &Painter, rect: Rect, kind: BackendKind, st: &Status, view: &ControlView, time: f64) {
+    fn top_bar(&mut self, ui: &mut Ui, p: &Painter, rect: Rect, st: &Status, view: &ControlView, time: f64) {
         p.rect_filled(rect, 0.0, Color32::from_rgba_unmultiplied(11, 15, 22, 240));
         let cy = rect.center().y;
         // Leave room for the macOS traffic lights drawn over the content.
@@ -324,26 +297,18 @@ impl Gui {
         p.text(pos2(x, cy + 12.0), Align2::LEFT_CENTER, "遥控车控制台", body(11.0), TEXT_DIM);
         x = brand.right() + 34.0;
 
-        // Backend switch.
-        let (seg_w, seg_h) = (98.0, 36.0);
-        let outer = Rect::from_min_size(pos2(x, cy - seg_h / 2.0), vec2(seg_w * 2.0 + 6.0, seg_h));
-        p.rect(outer, 10.0, PANEL, stroke(1.0, PANEL_EDGE), StrokeKind::Inside);
-        for (i, (k, name)) in [(BackendKind::Elrs, "ELRS"), (BackendKind::Rc2, "MR-RC2")].into_iter().enumerate() {
-            let r = Rect::from_min_size(pos2(outer.left() + 3.0 + i as f32 * seg_w, outer.top() + 3.0), vec2(seg_w, seg_h - 6.0));
-            let resp = hit(ui, r, name);
-            let on = kind == k;
-            if on {
-                rect_glow(p, r, 8.0, CYAN, 0.6);
-                p.rect(r, 8.0, tint(CYAN), stroke(1.0, CYAN), StrokeKind::Inside);
-            } else if resp.hovered() {
-                p.rect_filled(r, 8.0, hover());
-            }
-            let col = if on { CYAN } else if resp.hovered() { TEXT } else { TEXT_DIM };
-            spaced(p, r.center(), Align2::CENTER_CENTER, name, display(14.0), col, 1.2);
-            if resp.clicked() {
-                self.switch_backend(k);
-            }
-        }
+        // Scheme badge: ELRS over CRSF, and the configured line rate.
+        let badge = Rect::from_min_size(pos2(x, cy - 15.0), vec2(78.0, 30.0));
+        rect_glow(p, badge, 8.0, CYAN, 0.5);
+        p.rect(badge, 8.0, tint(CYAN), stroke(1.0, CYAN), StrokeKind::Inside);
+        spaced(p, badge.center(), Align2::CENTER_CENTER, "ELRS", display(14.0), CYAN, 1.2);
+        p.text(
+            pos2(badge.right() + 12.0, cy),
+            Align2::LEFT_CENTER,
+            format!("CRSF · {} bps", self.cfg.elrs.baud),
+            display(13.0),
+            TEXT_DIM,
+        );
 
         // Emergency stop.
         let es = Rect::from_min_size(pos2(rect.right() - 22.0 - 204.0, cy - 21.0), vec2(204.0, 42.0));
@@ -492,7 +457,7 @@ impl Gui {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn control_panel(&mut self, ui: &mut Ui, p: &Painter, rect: Rect, kind: BackendKind, st: &Status, view: &ControlView, time: f64) {
+    fn control_panel(&mut self, ui: &mut Ui, p: &Painter, rect: Rect, st: &Status, view: &ControlView, time: f64) {
         panel(p, rect);
         let (l, r) = (rect.left() + 18.0, rect.right() - 18.0);
         let mut y = section_title(p, pos2(l, rect.top() + 16.0), "控制", "CONTROL") + 16.0;
@@ -575,9 +540,9 @@ impl Gui {
         p.text(pos2(l, y), Align2::LEFT_TOP, format!("油门上限 {:.0}%", view.speed.scale() * 100.0), body(12.0), TEXT_DIM);
         y += 28.0;
 
-        // Direction flips for the current scheme: applied live, saved to the config.
+        // Direction flips: applied live, saved to the config.
         y = small_label(p, l, y, "方向", "DIRECTION");
-        let inv = self.shared.invert(kind);
+        let inv = self.shared.invert();
         let cw = (r - l - gap) / 2.0;
         for (i, (name, on)) in [("转向反向", inv.steering), ("油门反向", inv.throttle)].into_iter().enumerate() {
             let cr = Rect::from_min_size(pos2(l + i as f32 * (cw + gap), y), vec2(cw, 32.0));
@@ -591,34 +556,13 @@ impl Gui {
             p.text(cr.center(), Align2::CENTER_CENTER, name, body(13.0), if on { CYAN } else { TEXT_DIM });
             if resp.clicked() {
                 let new = if i == 0 { Invert { steering: !on, ..inv } } else { Invert { throttle: !on, ..inv } };
-                self.shared.set_invert(kind, new);
-                if let Err(e) = crate::config::save_invert(&self.config_path, kind, new.steering, new.throttle) {
+                self.shared.set_invert(new);
+                if let Err(e) = crate::config::save_invert(&self.config_path, new.steering, new.throttle) {
                     self.note = Some((format!("已生效，但保存配置失败：{e:#}"), Instant::now()));
                 }
             }
         }
         y += 32.0 + 12.0;
-
-        if kind == BackendKind::Rc2 {
-            y = small_label(p, l, y, "灯光", "LIGHTS");
-            let cw = (r - l - 2.0 * gap) / 3.0;
-            for (i, (name, bit)) in LIGHTS.into_iter().enumerate() {
-                let cr = Rect::from_min_size(pos2(l + i as f32 * (cw + gap), y), vec2(cw, 32.0));
-                let resp = hit(ui, cr, name);
-                let on = self.lights & bit != 0;
-                if on {
-                    rect_glow(p, cr, 8.0, AMBER, 0.5);
-                    p.rect(cr, 8.0, tint(AMBER), stroke(1.0, AMBER), StrokeKind::Inside);
-                } else {
-                    p.rect(cr, 8.0, if resp.hovered() { hover() } else { Color32::TRANSPARENT }, stroke(1.0, PANEL_EDGE), StrokeKind::Inside);
-                }
-                p.text(cr.center(), Align2::CENTER_CENTER, name, body(13.0), if on { AMBER } else { TEXT_DIM });
-                if resp.clicked() {
-                    self.lights ^= bit;
-                }
-            }
-            y += 32.0 + 12.0;
-        }
 
         // What actually went out on the wire.
         y = small_label(p, l, y, "线上发送", "WIRE");
@@ -697,19 +641,6 @@ fn lq_color(lq: u8) -> Color32 {
     }
 }
 
-fn ap_label(name: &str) -> &str {
-    match name {
-        "EnginePower" => "功率",
-        "Error" => "故障码",
-        "Electricity" => "电量",
-        "TmpE" => "电机温度",
-        "TmpC" => "控制器温度",
-        "TmpB" => "电池温度",
-        "Signal" => "信号",
-        other => other,
-    }
-}
-
 /// Built-in video radio: adapter, channel and link quality.
 fn radio_section(p: &Painter, l: f32, r: f32, mut y: f32, rs: &radio::Status) -> f32 {
     p.line_segment([pos2(l, y), pos2(r, y)], stroke(1.0, PANEL_EDGE));
@@ -736,8 +667,8 @@ fn radio_section(p: &Painter, l: f32, r: f32, mut y: f32, rs: &radio::Status) ->
     y
 }
 
-/// Top of the link panel once a device is connected: LQ for ELRS, signal for RC2.
-fn link_quality(p: &Painter, l: f32, r: f32, mut y: f32, kind: BackendKind, st: &Status, time: f64) -> f32 {
+/// Top of the link panel once the module is connected: uplink/downlink LQ.
+fn link_quality(p: &Painter, l: f32, r: f32, mut y: f32, st: &Status, time: f64) -> f32 {
     let big_block = |y: f32, zh: &str, en: &str, value: Option<f32>, right: String, frac: f32, col: Color32| -> f32 {
         let a = p.text(pos2(l, y), Align2::LEFT_TOP, zh, body(12.0), TEXT_DIM);
         spaced(p, pos2(a.right() + 8.0, a.center().y + 1.0), Align2::LEFT_CENTER, en, display(10.0), TEXT_FAINT, 1.6);
@@ -749,14 +680,14 @@ fn link_quality(p: &Painter, l: f32, r: f32, mut y: f32, kind: BackendKind, st: 
         n.bottom() + 12.0
     };
 
-    match (kind, st.link) {
-        (BackendKind::Elrs, Some(link)) => {
+    match st.link {
+        Some(link) => {
             for (zh, en, lq, rssi) in [("上行", "UPLINK", link.up_lq, link.up_rssi), ("下行", "DOWNLINK", link.down_lq, link.down_rssi)] {
                 y = big_block(y, zh, en, Some(lq as f32), format!("{rssi} dBm"), lq as f32 / 100.0, lq_color(lq));
             }
             y
         }
-        (BackendKind::Elrs, None) if st.tx_only() => {
+        None if st.tx_only() => {
             // Control works one-way; there is just no wire to hear back on.
             let t = spaced(p, pos2(l, y + 2.0), Align2::LEFT_TOP, "TX ONLY", display(32.0), AMBER, 2.0);
             p.text(pos2(l, t.bottom() + 8.0), Align2::LEFT_TOP, "只发送，读不到回传", bold(13.0), TEXT);
@@ -770,17 +701,13 @@ fn link_quality(p: &Painter, l: f32, r: f32, mut y: f32, kind: BackendKind, st: 
             p.galley(pos2(l, t.bottom() + 30.0), g, TEXT_DIM);
             t.bottom() + 30.0 + h + 14.0
         }
-        (BackendKind::Elrs, None) => {
+        None => {
             let blink = 0.55 + 0.45 * (0.5 + 0.5 * (time * 2.0).sin() as f32);
             let t = spaced(p, pos2(l, y + 2.0), Align2::LEFT_TOP, "NO LINK", display(32.0), alpha(RED, blink), 2.0);
             p.text(pos2(l, t.bottom() + 8.0), Align2::LEFT_TOP, "接收机未连上", bold(13.0), TEXT);
             p.text(pos2(l, t.bottom() + 28.0), Align2::LEFT_TOP, "检查车上电源和对频", body(12.0), TEXT_DIM);
             seg_bar(p, Rect::from_min_size(pos2(l, t.bottom() + 54.0), vec2(r - l, 8.0)), 0.0, RED, 12);
             t.bottom() + 78.0
-        }
-        (BackendKind::Rc2, _) => {
-            let sig = st.telemetry.get("Signal").copied().flatten();
-            big_block(y, "信号", "SIGNAL", sig, String::new(), sig.map(|s| (s / 5.0).clamp(0.0, 1.0)).unwrap_or(0.0), CYAN)
         }
     }
 }
@@ -789,7 +716,6 @@ fn link_quality(p: &Painter, l: f32, r: f32, mut y: f32, kind: BackendKind, st: 
 fn link_panel(
     p: &Painter,
     rect: Rect,
-    kind: BackendKind,
     st: &Status,
     view: &ControlView,
     radio: &radio::Status,
@@ -803,11 +729,7 @@ fn link_panel(
     if !st.connected {
         let blink = 0.55 + 0.45 * (0.5 + 0.5 * (time * 2.0).sin() as f32);
         let t = spaced(p, pos2(l, y + 2.0), Align2::LEFT_TOP, "OFFLINE", display(32.0), alpha(RED, blink), 2.0);
-        let what = match kind {
-            BackendKind::Elrs => "高频头未连接",
-            BackendKind::Rc2 => "RC2 控制器未连接",
-        };
-        p.text(pos2(l, t.bottom() + 8.0), Align2::LEFT_TOP, what, bold(13.0), TEXT);
+        p.text(pos2(l, t.bottom() + 8.0), Align2::LEFT_TOP, "高频头未连接", bold(13.0), TEXT);
         y = t.bottom() + 34.0;
         if !st.error.is_empty() {
             let g = p.layout(st.error.clone(), body(12.0), RED, r - l - 20.0);
@@ -817,7 +739,7 @@ fn link_panel(
             y = box_rect.bottom() + 16.0;
         }
     } else {
-        y = link_quality(p, l, r, y, kind, st, time);
+        y = link_quality(p, l, r, y, st, time);
     }
 
     p.line_segment([pos2(l, y), pos2(r, y)], stroke(1.0, PANEL_EDGE));
@@ -829,21 +751,11 @@ fn link_panel(
     };
     kv(p, l, r, y, "输入心跳", &hb, display(16.0), hb_col);
     y += 28.0;
-    if kind == BackendKind::Elrs {
-        let col = if st.resets > 1 { AMBER } else { TEXT };
-        kv(p, l, r, y, "高频头复位", &st.resets.to_string(), display(16.0), col);
-        y += 28.0;
-    }
+    let col = if st.resets > 1 { AMBER } else { TEXT };
+    kv(p, l, r, y, "高频头复位", &st.resets.to_string(), display(16.0), col);
+    y += 28.0;
     y += kv_fit(p, l, r, y, "设备", if st.device.is_empty() { "—" } else { &st.device }, bold(12.0), TEXT);
     y += kv_fit(p, l, r, y, "串口", if st.port.is_empty() { "—" } else { &st.port }, mono(10.5), TEXT_DIM);
-    for (name, v) in st.telemetry.iter().filter(|(n, _)| n.as_str() != "Signal") {
-        let (txt, col) = match v {
-            Some(v) => (format!("{v}"), TEXT),
-            None => ("未接".to_string(), TEXT_FAINT),
-        };
-        kv(p, l, r, y, ap_label(name), &txt, display(15.0), col);
-        y += 26.0;
-    }
 
     if radio.state != radio::State::Disabled {
         y = radio_section(p, l, r, y + 6.0, radio);
@@ -856,10 +768,7 @@ fn link_panel(
         return;
     }
     small_label(p, l, title_y, "链路历史", "30 S");
-    let legend: &[(&str, Color32)] = match kind {
-        BackendKind::Elrs => &[("上行", GREEN), ("下行", CYAN)],
-        BackendKind::Rc2 => &[("信号", CYAN)],
-    };
+    let legend: &[(&str, Color32)] = &[("上行", GREEN), ("下行", CYAN)];
     let mut lx = r;
     for (name, col) in legend.iter().rev() {
         let t = p.text(pos2(lx, title_y + 8.0), Align2::RIGHT_CENTER, *name, body(11.0), TEXT_DIM);
@@ -871,11 +780,9 @@ fn link_panel(
         p.line_segment([pos2(chart.left(), gy), pos2(chart.right(), gy)], stroke(1.0, alpha(TEXT_FAINT, 0.35)));
     }
     let up: Vec<f32> = history.iter().map(|s| s.0).collect();
-    sparkline(p, chart, &up, HISTORY_LEN, if kind == BackendKind::Elrs { GREEN } else { CYAN });
-    if kind == BackendKind::Elrs {
-        let down: Vec<f32> = history.iter().map(|s| s.1).collect();
-        sparkline(p, chart, &down, HISTORY_LEN, CYAN);
-    }
+    sparkline(p, chart, &up, HISTORY_LEN, GREEN);
+    let down: Vec<f32> = history.iter().map(|s| s.1).collect();
+    sparkline(p, chart, &down, HISTORY_LEN, CYAN);
 }
 
 pub fn run(gui: Gui) -> anyhow::Result<()> {

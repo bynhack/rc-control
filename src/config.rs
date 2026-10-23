@@ -1,23 +1,13 @@
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::path::Path;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum BackendKind {
-    Elrs,
-    Rc2,
-}
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct Config {
-    /// Backend started at launch; the window can switch at runtime.
-    pub backend: BackendKind,
     /// Input older than this counts as lost: output goes neutral and the
     /// throttle is disarmed until re-armed.
     pub heartbeat_timeout_ms: u64,
     pub elrs: ElrsConfig,
-    pub rc2: Rc2Config,
     pub video: VideoConfig,
     pub radio: RadioConfig,
     pub wheel: WheelConfig,
@@ -106,26 +96,11 @@ pub struct ElrsConfig {
     pub throttle_invert: bool,
 }
 
-#[derive(Debug, Clone, Deserialize)]
-#[serde(default)]
-pub struct Rc2Config {
-    pub port: String,
-    pub baud: u32,
-    pub steering_invert: bool,
-    pub throttle_invert: bool,
-    /// Device-side slew limit for Switch; protects the drivetrain.
-    pub throttle_rate: f32,
-    /// Rewrite unchanged values this often so a reconnected device catches up.
-    pub refresh_ms: u64,
-}
-
 impl Default for Config {
     fn default() -> Self {
         Config {
-            backend: BackendKind::Elrs,
             heartbeat_timeout_ms: 300,
             elrs: ElrsConfig::default(),
-            rc2: Rc2Config::default(),
             video: VideoConfig::default(),
             radio: RadioConfig::default(),
             wheel: WheelConfig::default(),
@@ -147,28 +122,12 @@ impl Default for ElrsConfig {
     }
 }
 
-impl Default for Rc2Config {
-    fn default() -> Self {
-        Rc2Config {
-            port: "auto".into(),
-            baud: crate::protocol::rc2::BAUD,
-            steering_invert: false,
-            throttle_invert: false,
-            throttle_rate: 3.0,
-            refresh_ms: 250,
-        }
-    }
-}
-
-/// Writes one backend's direction flips into the config file, touching only
-/// those two keys so the rest of the file (comments included) is kept.
-pub fn save_invert(path: &Path, kind: BackendKind, steering: bool, throttle: bool) -> anyhow::Result<()> {
+/// Writes the ELRS direction flips into the config file, touching only those
+/// two keys so the rest of the file (comments included) is kept.
+pub fn save_invert(path: &Path, steering: bool, throttle: bool) -> anyhow::Result<()> {
     let text = if path.exists() { std::fs::read_to_string(path)? } else { String::new() };
     let mut doc: toml_edit::DocumentMut = text.parse()?;
-    let section = match kind {
-        BackendKind::Elrs => "elrs",
-        BackendKind::Rc2 => "rc2",
-    };
+    let section = "elrs";
     if !doc.contains_table(section) {
         doc[section] = toml_edit::table();
     }
@@ -211,7 +170,6 @@ mod tests {
         let cfg: Config = toml::from_str(include_str!("../rc-control.example.toml")).unwrap();
         cfg.validate().unwrap();
         assert_eq!(cfg.elrs.baud, 115_200);
-        assert_eq!(cfg.rc2.baud, 460_800);
         assert_eq!(cfg.video.port, 5600);
         assert_eq!(cfg.video.codec, crate::video::rtp::Codec::H265);
         assert_eq!(cfg.radio.channel, 161);
@@ -223,23 +181,31 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("rc-control.toml");
         std::fs::write(&path, "# mine\n[elrs]\n# the adapter\nport = \"COM5\"\nbaud = 400000\n").unwrap();
-        save_invert(&path, BackendKind::Elrs, true, false).unwrap();
+        save_invert(&path, true, false).unwrap();
         let text = std::fs::read_to_string(&path).unwrap();
         assert!(text.contains("# mine") && text.contains("# the adapter") && text.contains("port = \"COM5\""));
         let cfg: Config = toml::from_str(&text).unwrap();
         assert!(cfg.elrs.steering_invert && !cfg.elrs.throttle_invert);
         assert_eq!(cfg.elrs.baud, 400_000);
-        save_invert(&path, BackendKind::Rc2, false, true).unwrap();
+        save_invert(&path, false, true).unwrap();
         let cfg: Config = toml::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
-        assert!(cfg.rc2.throttle_invert && cfg.elrs.steering_invert);
+        assert!(!cfg.elrs.steering_invert && cfg.elrs.throttle_invert);
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
     fn partial_file_keeps_defaults() {
-        let cfg: Config = toml::from_str("backend = \"rc2\"\n[elrs]\nsteering_invert = true\n").unwrap();
-        assert_eq!(cfg.backend, BackendKind::Rc2);
+        let cfg: Config = toml::from_str("[elrs]\nsteering_invert = true\n").unwrap();
         assert!(cfg.elrs.steering_invert);
         assert_eq!(cfg.elrs.throttle_channel, 2);
+    }
+
+    #[test]
+    fn files_from_the_two_scheme_era_still_load() {
+        // `backend` and [rc2] no longer exist; old local configs keep working.
+        let old = "backend = \"rc2\"\n[elrs]\nbaud = 400000\n[rc2]\nport = \"COM3\"\nthrottle_rate = 3.0\n";
+        let cfg: Config = toml::from_str(old).unwrap();
+        cfg.validate().unwrap();
+        assert_eq!(cfg.elrs.baud, 400_000);
     }
 }

@@ -3,7 +3,6 @@
 //! and every frame carries the complete state, so a lost frame self-heals.
 
 use super::{supervise, Invert, Shared};
-use crate::config::BackendKind;
 use anyhow::Context;
 use crate::config::ElrsConfig;
 use crate::protocol::crsf::{self, Event, CHANNELS, CH_CENTER};
@@ -67,7 +66,7 @@ fn session(cfg: &ElrsConfig, shared: &Shared, stop: &AtomicBool) -> anyhow::Resu
         let now = Instant::now();
         if now >= next_frame {
             let out = shared.output();
-            let ch = channels(cfg, shared.invert(BackendKind::Elrs), out.steering, out.throttle);
+            let ch = channels(cfg, shared.invert(), out.steering, out.throttle);
             port.write_all(&crsf::rc_frame(&ch))?;
             next_frame += interval;
             if next_frame < now {

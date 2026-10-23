@@ -32,11 +32,10 @@ const ARM_THROTTLE_TOLERANCE: f32 = 0.02;
 pub struct Output {
     pub steering: f32,
     pub throttle: f32,
-    pub lights: u8,
 }
 
 impl Output {
-    pub const NEUTRAL: Output = Output { steering: 0.0, throttle: 0.0, lights: 0 };
+    pub const NEUTRAL: Output = Output { steering: 0.0, throttle: 0.0 };
 }
 
 #[derive(Debug)]
@@ -45,7 +44,6 @@ pub struct Control {
     throttle_demand: f32,
     armed: bool,
     speed: Speed,
-    lights: u8,
     last_input: Option<Instant>,
     timeout: Duration,
     disarm_reason: String,
@@ -57,7 +55,6 @@ pub struct ControlView {
     pub throttle_demand: f32,
     pub armed: bool,
     pub speed: Speed,
-    pub lights: u8,
     pub input_age_ms: Option<u64>,
     pub input_fresh: bool,
     pub disarm_reason: String,
@@ -71,7 +68,6 @@ impl Control {
             throttle_demand: 0.0,
             armed: false,
             speed: Speed::Low,
-            lights: 0,
             last_input: None,
             timeout,
             disarm_reason: "启动时默认锁定".into(),
@@ -120,10 +116,6 @@ impl Control {
         self.speed = speed;
     }
 
-    pub fn set_lights(&mut self, bits: u8) {
-        self.lights = bits;
-    }
-
     /// Latches a disarm once input goes stale, so a page that comes back
     /// cannot resume driving without an explicit re-arm.
     pub fn tick(&mut self, now: Instant) {
@@ -134,10 +126,10 @@ impl Control {
 
     pub fn output(&self, now: Instant) -> Output {
         if !self.fresh(now) {
-            return Output { lights: self.lights, ..Output::NEUTRAL };
+            return Output::NEUTRAL;
         }
         let throttle = if self.armed { self.throttle_demand * self.speed.scale() } else { 0.0 };
-        Output { steering: self.steering, throttle, lights: self.lights }
+        Output { steering: self.steering, throttle }
     }
 
     pub fn view(&self, now: Instant) -> ControlView {
@@ -146,7 +138,6 @@ impl Control {
             throttle_demand: self.throttle_demand,
             armed: self.armed,
             speed: self.speed,
-            lights: self.lights,
             input_age_ms: self.last_input.map(|t| now.duration_since(t).as_millis() as u64),
             input_fresh: self.fresh(now),
             disarm_reason: self.disarm_reason.clone(),
@@ -170,7 +161,7 @@ mod tests {
         let now = Instant::now();
         let mut c = Control::new(T);
         c.input(0.5, 0.8, now);
-        assert_eq!(c.output(now), Output { steering: 0.5, throttle: 0.0, lights: 0 });
+        assert_eq!(c.output(now), Output { steering: 0.5, throttle: 0.0 });
     }
 
     #[test]

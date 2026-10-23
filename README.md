@@ -1,13 +1,13 @@
 # rc-control
 
-电脑端遥控车控制程序。同一套控制逻辑，可以切换两种发送方案：
+电脑端遥控车控制程序：电脑通过 ExpressLRS 高频头发 CRSF 控制车，同时用内置图传接收 OpenIPC 摄像头画面。
 
-| 方案 | 硬件 | 方式 |
+| 高频头 | 接法 | 配置 |
 |---|---|---|
-| `elrs` | Jumper AION Nano 高频头（USB 已改为 CRSF 串口）→ ELRS PWM 接收机 | 每 20 ms 发一帧 16 通道 CRSF，115200 |
-| `rc2` | MR-RC2 控制器（CH340） | 请求/应答协议，只在值变化时写，460800 |
+| Jumper AION Nano（USB 已改为 CRSF 串口） | 直接插 USB | `port = "auto"`，115200，20 ms |
+| BETAFPV Micro TX 等外置高频头 | USB 转串口模块 TXD → 高频头 CRSF 脚（3.3 V 电平） | 写死端口，400000，4 ms |
 
-界面是原生窗口（egui），深色仪表盘风格：中间是油门仪表和转向条，左边是链路状态和 30 秒链路历史，右边是解锁、速度档、灯光和线上发送的值。方向盘（T300）以后作为另一个输入源，接到同一个控制层。
+界面是原生窗口（egui），深色仪表盘风格：中间是油门仪表和转向条（有图传时切成画面），左边是链路状态、图传网卡和 30 秒链路历史，右边是解锁、速度档、方向反转和线上发送的值。可以用窗口滑条或 Thrustmaster T300RS 方向盘操作。
 
 ![控制台](docs/dashboard.png)
 
@@ -16,14 +16,12 @@
 ```bash
 cargo build --release
 ./target/release/rc-control              # 打开控制窗口
-./target/release/rc-control --backend rc2
 ./target/release/rc-control --list-ports # 看串口和 USB 编号
 ```
 
-配置：复制 `rc-control.example.toml` 为 `rc-control.toml`，放在当前目录或程序旁边。不放就用默认值。串口默认 `auto`，按 USB 芯片编号自动找：
+配置：复制 `rc-control.example.toml` 为 `rc-control.toml`，放在当前目录或程序旁边。不放就用默认值。串口默认 `auto`，按 USB 芯片编号找 AION Nano 的 CH9102（`1a86:55d4`）；经 USB 转串口模块接的高频头要在 `[elrs]` 里写明端口和波特率。
 
-- 高频头 CH9102 `1a86:55d4`
-- RC2 控制器 CH340 `1a86:7523`
+只接了 TXD（没有 RXD 回传线）时，程序收不到高频头的回复，左边会显示 **TX ONLY**：控制照常，只是读不到链路质量。
 
 **macOS 上 `cargo build` 报 Xcode 许可证错误时：** 在终端运行一次 `sudo xcodebuild -license` 同意许可，或者临时改用命令行工具编译：`DEVELOPER_DIR=/Library/Developer/CommandLineTools cargo build --release`。
 
@@ -59,7 +57,6 @@ cargo build --release
 - Aviateur 的两处 MinGW 兼容修正（子模块源码不改，构建时打在复制出来的文件上，见 `native/CMakeLists.txt` 的 `patch_staged`）：`net_compat.h` 里 MinGW 已带 `clock_gettime`（winpthreads），内联版本只对非 MinGW 生效；`compat/getopt.h` 里 getopt 全局变量的 weak 定义在 PE 链接器下会重复，MinGW 下不提供。
 - `native/CMakeLists.txt`：`/utf-8` 只对 MSVC 生效；`build.rs` 为 MinGW 链接静态 libstdc++/gcc_eh 和 ws2_32。
 
-- CH340（RC2）的驱动一般由 Windows 更新自动安装。
 - CH9102（高频头）如果设备管理器里没有出现 COM 口，要装 WCH 的 CH343SER 驱动。
 - 配置里也可以把端口写死成 `COM5` 这样的名字。
 - 图传网卡（RTL8812AU）在 Windows 上必须绑定 WinUSB/libusbK 驱动，Realtek 的 Wi-Fi 驱动（RtlWlanu）打不开 USB。可以用 Zadig 替换，或直接用仓库里的脚本（会弹 UAC 确认）：
@@ -69,7 +66,6 @@ cargo build --release
   ```
 
   绑定后系统里不再有这块"Wi-Fi 网卡"，属于预期。脚本执行前会把原注册表导出到 `scripts\rtl8812au-before-winusb-<时间>.reg`，想还原回 Realtek 驱动时双击它，再拔插网卡。绑定检查：`Get-PnpDevice | ? InstanceId -match 'VID_0BDA'` 的 Service 应为 `WinUSB`。
-- RC2 的 CH340 如果被 Windows 自动绑成了 WinUSB（不出 COM 口），用 `scripts\bind-ch340-ch341.ps1` 绑回 WCH 串口驱动（先装官网 CH341SER）。
 
 ## 图传
 
@@ -111,24 +107,19 @@ git -C third_party/aviateur submodule update --init 3rd/devourer
 ./target/release/rc-control --probe-wheel   # 记录方向盘/踏板的 HID 报告，按提示操作，生成 wheel-trace.csv
 ```
 
-另外两个排查命令：`--probe-elrs`（开高频头串口发 250 帧中位 CRSF）、`--probe-rc2`（逐步执行 RC2 握手并计时）。
+另一个排查命令：`--probe-elrs`（开高频头串口发 250 帧中位 CRSF，并打印收到的回复）。
 
 ## 安全规则
 
-全部集中在 `src/control.rs`，两种方案共用，后端绕不过去：
+全部集中在 `src/control.rs`，后端绕不过去：
 
 - 启动时油门锁定。解锁要求输入心跳正常、油门在中位。
 - 输入超过 `heartbeat_timeout_ms`（默认 300 ms）没更新：输出立即回中，油门锁定。之后输入恢复了也不会自动解锁，必须重新解锁。窗口每一帧都发心跳，最小化或卡住时心跳就会断。
 - 油门滑条只有按住鼠标拖动时才保持，松开立即回零。
 - 急停：锁定并让转向、油门回中。窗口里按空格键也是急停，而且空格不会触发任何按钮。
-- 切换方案时自动锁定。
-- 关闭窗口或 Ctrl+C 退出时，都会先归零再关串口。RC2 会一直保持最后写入的值，所以这一步对它尤其重要。
-- RC2 油门回零时不带速率限制，立即生效；其他油门变化带 `throttle_rate`。
+- 关闭窗口或 Ctrl+C 退出时，都会先归零、发几帧中位，再关串口和图传网卡。
 
-**已知限制：** 程序被强制结束（kill -9、断电、蓝屏）时：
-
-- ELRS：高频头收不到数据就停止发射，接收机触发失控保护，车会停。
-- RC2：设备端有没有超时保护还不清楚，可能保持最后的油门值。
+程序被强制结束（kill -9、断电、蓝屏）时也是安全的：高频头收不到数据就停止发射，接收机触发失控保护，车会停。
 
 ## 结构
 
@@ -137,9 +128,7 @@ src/
   control.rs        与方案无关的控制状态和全部安全规则
   config.rs         配置文件
   protocol/crsf.rs  CRSF 组帧、解析（链路质量、设备名、模块复位）
-  protocol/rc2.rs   RC2 协议，每次 2 个字符流水线发送，含模拟设备测试
   backend/elrs.rs   定时发送线程
-  backend/rc2.rs    变化写入 + 逐个读取遥测
   gui/mod.rs        窗口布局和交互
   gui/widgets.rs    自绘组件：仪表、转向条、滑条、信号条、链路历史
   gui/theme.rs      配色、深色主题、字体（中文用苹方/微软雅黑，数字用 DIN/Bahnschrift）
@@ -152,10 +141,10 @@ src/
 native/             C++ 层：编译 Aviateur 的收包代码，提供 C 接口（rcwfb.h）
 third_party/aviateur  子模块，GPL-3.0
 vendor/             ffmpeg-sys-next 9.0.1 + Windows D3D 空 stub（[patch.crates-io]）
-scripts/            Windows：构建、部署 DLL、绑定 8812AU/CH340 驱动
+scripts/            Windows：构建、部署 DLL、把 8812AU 绑定到 WinUSB
 ```
 
-`cargo test` 运行协议、映射、安全规则的单元测试。不需要接硬件，RC2 用软件模拟设备测试。
+`cargo test` 运行协议、映射、安全规则、方向盘报告解析的单元测试，不需要接硬件。
 
 ### 调界面用的两个环境变量
 
@@ -163,14 +152,13 @@ scripts/            Windows：构建、部署 DLL、绑定 8812AU/CH340 驱动
 - `RC_CONTROL_DEMO=转向,油门[,low|mid|high]`：用假输入看仪表效果，数值范围 -1 到 1。**只要有设备连着就自动失效**，配合不存在的串口使用：
 
 ```bash
-printf '[elrs]\nport = "/dev/none"\n[rc2]\nport = "/dev/none"\n' > /tmp/demo.toml
+printf '[elrs]\nport = "/dev/none"\n' > /tmp/demo.toml
 RC_CONTROL_DEMO="0.45,0.85,high" RC_CONTROL_SNAPSHOT=/tmp/ui.bmp ./target/release/rc-control --config /tmp/demo.toml
 ```
 
 ## 协议要点
 
 - **CRSF**：地址 `0xEE`，CRC8 多项式 `0xD5`；通道 172 / 992 / 1811 对应 988 / 1500 / 2012 µs。ELRS 只有通道 1 到 4 是全精度，转向和油门不要放到 5 以上。
-- **RC2**：每个字节拆成两个半字节字符，每个字符都要等设备回确认。实测设备最多能接住连续 2 个字符，所以每次发 2 个。写一次约 40 ms，比逐字符快约 40%。
 
 ## 许可证
 

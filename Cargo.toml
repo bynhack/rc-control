@@ -2,7 +2,7 @@
 name = "rc-control"
 version = "0.1.0"
 edition = "2021"
-description = "PC-side controller for RC cars over ExpressLRS (CRSF) or MR-RC2"
+description = "PC-side controller for RC cars over ExpressLRS (CRSF), with OpenIPC video"
 license = "GPL-3.0-only"
 
 [dependencies]

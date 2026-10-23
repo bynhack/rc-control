@@ -12,20 +12,18 @@ mod wheel;
 
 use anyhow::Context;
 use backend::{Runner, Shared};
-use config::{BackendKind, Config};
+use config::Config;
 use control::Control;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 const USAGE: &str = "\
-用法: rc-control [--config 路径] [--backend elrs|rc2] [--list-ports] [--probe-video]
+用法: rc-control [--config 路径] [--list-ports] [--probe-video] [--probe-elrs] [--probe-wheel]
 
   --config      配置文件，默认依次找当前目录、程序所在目录下的 rc-control.toml
-  --backend     覆盖配置里的启动方案
   --list-ports  列出串口及 USB 编号后退出
   --probe-video 只接收图传 10 秒并打印统计，用来检查图传链路
-  --probe-rc2   只做 RC2 连接握手并打印每一步结果，用来检查串口
   --probe-elrs  开高频头串口发 250 帧 CRSF 后退出，检查 ELRS 链路
   --probe-wheel 记录 20 秒方向盘/踏板的 HID 输入，用来定轴偏移";
 
@@ -45,23 +43,13 @@ fn default_config_path() -> PathBuf {
 fn main() -> anyhow::Result<()> {
     let mut args = std::env::args().skip(1);
     let mut config_path = None;
-    let mut backend = None;
     let mut probe_video = false;
-    let mut probe_rc2 = false;
     let mut probe_elrs = false;
     let mut probe_wheel = false;
     while let Some(a) = args.next() {
         match a.as_str() {
             "--config" => config_path = Some(PathBuf::from(args.next().context("--config 后面要跟路径")?)),
-            "--backend" => {
-                backend = Some(match args.next().as_deref() {
-                    Some("elrs") => BackendKind::Elrs,
-                    Some("rc2") => BackendKind::Rc2,
-                    _ => anyhow::bail!("--backend 只能是 elrs 或 rc2"),
-                })
-            }
             "--probe-video" => probe_video = true,
-            "--probe-rc2" => probe_rc2 = true,
             "--probe-elrs" => probe_elrs = true,
             "--probe-wheel" => probe_wheel = true,
             "--list-ports" => {
@@ -79,23 +67,17 @@ fn main() -> anyhow::Result<()> {
     }
 
     let path = config_path.unwrap_or_else(default_config_path);
-    let mut cfg = Config::load(&path).with_context(|| format!("读取配置 {}", path.display()))?;
+    let cfg = Config::load(&path).with_context(|| format!("读取配置 {}", path.display()))?;
     if path.exists() {
         println!("配置: {}", path.display());
     } else {
         println!("配置: 未找到 {}，使用默认值", path.display());
-    }
-    if let Some(b) = backend {
-        cfg.backend = b;
     }
     if probe_wheel {
         return wheel::probe(28);
     }
     if probe_elrs {
         return probe_elrs_cmd(cfg.elrs.clone());
-    }
-    if probe_rc2 {
-        return probe_rc2_cmd(cfg.rc2.clone());
     }
     if probe_video {
         return probe(cfg.video, cfg.radio);
@@ -110,11 +92,11 @@ fn main() -> anyhow::Result<()> {
         std::thread::sleep(Duration::from_millis(20));
     })?;
 
-    let runner = Arc::new(Mutex::new(Runner::start(cfg.backend, &cfg, shared.clone())));
-    println!("方案: {:?}", cfg.backend);
+    let runner = Arc::new(Mutex::new(Runner::start(&cfg, shared.clone())));
+    println!("ELRS 串口: {}，波特率 {}", cfg.elrs.port, cfg.elrs.baud);
 
-    // RC2 holds its last value until told otherwise, so every way out must
-    // zero the outputs: Ctrl+C in a terminal, or closing the window.
+    // Every way out zeroes the outputs and sends neutral before the port
+    // closes: Ctrl+C in a terminal, or closing the window.
     let shutdown = {
         let (shared, runner) = (shared.clone(), runner.clone());
         move || {
@@ -135,7 +117,7 @@ fn main() -> anyhow::Result<()> {
         std::process::exit(0);
     })?;
 
-    let result = gui::run(gui::Gui::new(cfg, path, shared, runner, video, radio.shared.clone()));
+    let result = gui::run(gui::Gui::new(cfg, path, shared, video, radio.shared.clone()));
     radio.shutdown();
     shutdown();
     result
@@ -190,57 +172,6 @@ fn probe_elrs_cmd(cfg: config::ElrsConfig) -> anyhow::Result<()> {
         let _ = port.write_all(&neutral);
         std::thread::sleep(interval);
     }
-    Ok(())
-}
-
-/// 在真实设备上逐段执行 RC2 握手，每步计时并打印，便于诊断 Windows 串口问题。
-fn probe_rc2_cmd(cfg: config::Rc2Config) -> anyhow::Result<()> {
-    println!("串口清单：");
-    for p in backend::describe_ports() {
-        println!("  {p}");
-    }
-    let name = backend::find_port(&cfg.port, backend::rc2::USB_VID, backend::rc2::USB_PID)
-        .with_context(|| format!("找 RC2 串口（ Wanted {}）", cfg.port))?;
-    println!("选定串口 {name}，波特率 {}", cfg.baud);
-
-    let t = Instant::now();
-    let port = serialport::new(&name, cfg.baud)
-        .timeout(Duration::from_millis(400))
-        .open()
-        .with_context(|| format!("打开 {name} 失败"))?;
-    println!("open            {:>7.0} ms", t.elapsed().as_secs_f64() * 1000.0);
-
-    let mut dev = protocol::rc2::Rc2::new(port);
-    let step = |t0: &mut Instant, ok: bool, label: &str, detail: String| {
-        println!("{:<14} {}: {:>7.0} ms  {detail}", label, if ok { "ok " } else { "ERR" }, t0.elapsed().as_secs_f64() * 1000.0);
-        *t0 = Instant::now();
-    };
-
-    let mut t = Instant::now();
-    match dev.model() {
-        Ok(m) => step(&mut t, true, "model", format!("{m:?}")),
-        Err(e) => {
-            step(&mut t, false, "model", e.to_string());
-            anyhow::bail!("型号读取失败（如上）；后续流程不继续");
-        }
-    }
-    let fw = dev.firmware();
-    step(&mut t, fw.is_ok(), "firmware", fw.as_ref().map(|v| v.to_owned()).unwrap_or_else(|e| e.to_string()));
-    let sn = dev.serial();
-    step(&mut t, sn.is_ok(), "serial", sn.as_ref().map(|v| v.to_owned()).unwrap_or_else(|e| e.to_string()));
-    let cps = dev.cp_names();
-    step(&mut t, cps.is_ok(), "cp_names", cps.as_ref().map(|v| v.join(", ")).unwrap_or_else(|e| e.to_string()));
-    let aps = dev.ap_names();
-    step(&mut t, aps.is_ok(), "ap_names", aps.as_ref().map(|v| v.join(", ")).unwrap_or_else(|e| e.to_string()));
-    // 读一个遥测点，模拟正常运行中最频繁的操作。
-    if let (Ok(c), Ok(a)) = (&cps, &aps) {
-        if !a.is_empty() {
-            let v = dev.get_ap(0);
-            step(&mut t, v.is_ok(), "get_ap[0]", v.map_or_else(|e| e.to_string(), |x| x.to_string()));
-        }
-        let _ = c;
-    }
-    println!("离开时再清零输出一次");
     Ok(())
 }
 

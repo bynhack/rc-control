@@ -2,9 +2,8 @@
 //! Each runs on its own thread and reconnects on its own after errors.
 
 pub mod elrs;
-pub mod rc2;
 
-use crate::config::{BackendKind, Config};
+use crate::config::Config;
 use crate::control::Control;
 use crate::protocol::crsf::LinkStats;
 use serde::Serialize;
@@ -22,8 +21,6 @@ pub struct Status {
     pub error: String,
     /// ELRS link quality, present once the receiver is actually linked.
     pub link: Option<LinkStats>,
-    /// RC2 telemetry points; `None` means the sensor is not fitted.
-    pub telemetry: BTreeMap<String, Option<f32>>,
     /// Last values put on the wire, in the backend's own units.
     pub sent: BTreeMap<String, f32>,
     pub resets: u32,
@@ -45,8 +42,8 @@ impl Status {
     }
 }
 
-/// Per-backend direction flips, applied at the last step before sending so
-/// the dashboard keeps showing the direction the driver asked for.
+/// Direction flips, applied at the last step before sending so the dashboard
+/// keeps showing the direction the driver asked for.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Invert {
     pub steering: bool,
@@ -63,25 +60,22 @@ impl Invert {
 pub struct Shared {
     pub control: Mutex<Control>,
     pub status: Mutex<Status>,
-    /// Indexed by `BackendKind as usize`; changeable at runtime from the GUI.
-    inverts: Mutex<[Invert; 2]>,
+    /// Changeable at runtime from the GUI.
+    invert: Mutex<Invert>,
 }
 
 impl Shared {
     pub fn new(control: Control, cfg: &Config) -> Self {
-        let inverts = [
-            Invert { steering: cfg.elrs.steering_invert, throttle: cfg.elrs.throttle_invert },
-            Invert { steering: cfg.rc2.steering_invert, throttle: cfg.rc2.throttle_invert },
-        ];
-        Shared { control: Mutex::new(control), status: Mutex::new(Status::default()), inverts: Mutex::new(inverts) }
+        let invert = Invert { steering: cfg.elrs.steering_invert, throttle: cfg.elrs.throttle_invert };
+        Shared { control: Mutex::new(control), status: Mutex::new(Status::default()), invert: Mutex::new(invert) }
     }
 
-    pub fn invert(&self, kind: BackendKind) -> Invert {
-        self.inverts.lock().unwrap_or_else(|e| e.into_inner())[kind as usize]
+    pub fn invert(&self) -> Invert {
+        *self.invert.lock().unwrap_or_else(|e| e.into_inner())
     }
 
-    pub fn set_invert(&self, kind: BackendKind, invert: Invert) {
-        self.inverts.lock().unwrap_or_else(|e| e.into_inner())[kind as usize] = invert;
+    pub fn set_invert(&self, invert: Invert) {
+        *self.invert.lock().unwrap_or_else(|e| e.into_inner()) = invert;
     }
 
     pub fn control(&self) -> MutexGuard<'_, Control> {
@@ -98,28 +92,21 @@ impl Shared {
 }
 
 pub struct Runner {
-    pub kind: BackendKind,
     stop: Arc<AtomicBool>,
     handle: Option<JoinHandle<()>>,
 }
 
 impl Runner {
-    pub fn start(kind: BackendKind, cfg: &Config, shared: Arc<Shared>) -> Runner {
+    pub fn start(cfg: &Config, shared: Arc<Shared>) -> Runner {
         *shared.status() = Status::default();
         let stop = Arc::new(AtomicBool::new(false));
         let flag = stop.clone();
-        let handle = match kind {
-            BackendKind::Elrs => {
-                let c = cfg.elrs.clone();
-                thread::Builder::new().name("elrs".into()).spawn(move || elrs::run(c, shared, flag))
-            }
-            BackendKind::Rc2 => {
-                let c = cfg.rc2.clone();
-                thread::Builder::new().name("rc2".into()).spawn(move || rc2::run(c, shared, flag))
-            }
-        }
-        .expect("spawn backend thread");
-        Runner { kind, stop, handle: Some(handle) }
+        let c = cfg.elrs.clone();
+        let handle = thread::Builder::new()
+            .name("elrs".into())
+            .spawn(move || elrs::run(c, shared, flag))
+            .expect("spawn backend thread");
+        Runner { stop, handle: Some(handle) }
     }
 
     /// Asks the backend to send neutral, close its port, and waits for it.

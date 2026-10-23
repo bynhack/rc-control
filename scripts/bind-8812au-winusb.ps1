@@ -2,7 +2,6 @@
 # 让 libusb（内置图传的 devourer 收包代码）能直接访问 USB。需要管理员权限。
 # 会对每个插过的 8812AU 实例生效；执行前先把当前注册表导出到脚本目录，
 # 想还原回 Realtek 驱动时双击那个 .reg 文件，再拔插网卡。
-# 和 scripts\bind-ch340-ch341.ps1 方向相反（那个是把 CH340 绑回串口驱动）。
 $ErrorActionPreference = 'Continue'
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 Start-Transcript -Path (Join-Path $here 'bind-8812au-winusb.log') -Force | Out-Null
