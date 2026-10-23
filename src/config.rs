@@ -19,6 +19,29 @@ pub struct Config {
     pub elrs: ElrsConfig,
     pub rc2: Rc2Config,
     pub video: VideoConfig,
+    pub radio: RadioConfig,
+}
+
+/// Built-in video radio (Aviateur's receive path on an RTL8812AU-class
+/// USB adapter). Received video goes to `video.port`.
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct RadioConfig {
+    pub enabled: bool,
+    /// "auto", or part of the adapter name as listed (e.g. "RTL8812AU").
+    pub adapter: String,
+    /// Wi-Fi channel the camera transmits on, e.g. 161 = 5805 MHz.
+    pub channel: u8,
+    /// 20 or 40.
+    pub width_mhz: u16,
+    /// gs.key path; empty uses the OpenIPC default key.
+    pub key: Option<String>,
+}
+
+impl Default for RadioConfig {
+    fn default() -> Self {
+        RadioConfig { enabled: true, adapter: "auto".into(), channel: 161, width_mhz: 20, key: None }
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -75,6 +98,7 @@ impl Default for Config {
             elrs: ElrsConfig::default(),
             rc2: Rc2Config::default(),
             video: VideoConfig::default(),
+            radio: RadioConfig::default(),
         }
     }
 }
@@ -125,6 +149,7 @@ impl Config {
         anyhow::ensure!(e.steering_channel != e.throttle_channel, "转向和油门不能用同一个通道");
         anyhow::ensure!((4..=100).contains(&e.frame_interval_ms), "elrs.frame_interval_ms 必须在 4..100 之间");
         anyhow::ensure!(self.heartbeat_timeout_ms >= 100, "heartbeat_timeout_ms 至少 100");
+        anyhow::ensure!(matches!(self.radio.width_mhz, 20 | 40), "radio.width_mhz 只能是 20 或 40");
         Ok(())
     }
 }
@@ -141,6 +166,7 @@ mod tests {
         assert_eq!(cfg.rc2.baud, 460_800);
         assert_eq!(cfg.video.port, 5600);
         assert_eq!(cfg.video.codec, crate::video::rtp::Codec::H265);
+        assert_eq!(cfg.radio.channel, 161);
     }
 
     #[test]

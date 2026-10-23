@@ -10,7 +10,7 @@ mod widgets;
 use crate::backend::{Runner, Shared, Status};
 use crate::config::{BackendKind, Config};
 use crate::control::{ControlView, Speed};
-use crate::video;
+use crate::{radio, video};
 use eframe::egui::{
     self, pos2, vec2, Align2, Color32, Key, Modifiers, Painter, Rect, Sense, Stroke, StrokeKind, Ui, ViewportCommand,
 };
@@ -57,11 +57,12 @@ pub struct Gui {
     video: Arc<video::Shared>,
     video_tex: Option<egui::TextureHandle>,
     video_seen: u64,
+    radio: Arc<radio::Shared>,
     dev: dev::Dev,
 }
 
 impl Gui {
-    pub fn new(cfg: Config, shared: Arc<Shared>, runner: Arc<Mutex<Runner>>, video: Arc<video::Shared>) -> Self {
+    pub fn new(cfg: Config, shared: Arc<Shared>, runner: Arc<Mutex<Runner>>, video: Arc<video::Shared>, radio: Arc<radio::Shared>) -> Self {
         Gui {
             cfg,
             shared,
@@ -78,6 +79,7 @@ impl Gui {
             video,
             video_tex: None,
             video_seen: 0,
+            radio,
             dev: dev::Dev::from_env(),
         }
     }
@@ -217,7 +219,8 @@ impl eframe::App for Gui {
             let right = Rect::from_min_max(pos2(main.right() - 292.0, main.top()), main.max);
             let center = Rect::from_min_max(pos2(left.right() + gap, main.top()), pos2(right.left() - gap, main.bottom()));
 
-            link_panel(&p, left, kind, &status, &view, &self.history, time);
+            let radio = self.radio.status().clone();
+            link_panel(&p, left, kind, &status, &view, &radio, &self.history, time);
             // Video style while frames arrive, the gauge dashboard otherwise.
             match (&self.video_tex, live) {
                 (Some(tex), true) => self.video_panel(&p, center, tex.id(), &vstats, &view, time),
@@ -628,6 +631,32 @@ fn ap_label(name: &str) -> &str {
     }
 }
 
+/// Built-in video radio: adapter, channel and link quality.
+fn radio_section(p: &Painter, l: f32, r: f32, mut y: f32, rs: &radio::Status) -> f32 {
+    p.line_segment([pos2(l, y), pos2(r, y)], stroke(1.0, PANEL_EDGE));
+    y = small_label(p, l, y + 12.0, "图传", "RADIO") + 8.0;
+    let (state, col) = match &rs.state {
+        radio::State::Receiving => (rs.adapter.clone(), GREEN),
+        radio::State::Starting => (format!("{} 启动中", rs.adapter), AMBER),
+        radio::State::NoAdapter => ("未插入图传网卡".to_string(), TEXT_FAINT),
+        radio::State::Error(e) => (e.clone(), RED),
+        radio::State::Disabled => ("未启用".to_string(), TEXT_FAINT),
+    };
+    y += kv_fit(p, l, r, y, "网卡", &state, bold(12.0), col);
+    let ch = format!("{} · {} MHz · {} MHz", rs.channel, radio::channel_mhz(rs.channel), rs.width_mhz);
+    kv(p, l, r, y, "信道", &ch, display(14.0), TEXT);
+    y += 28.0;
+    if rs.state == radio::State::Receiving {
+        let best = rs.link_score[0].max(rs.link_score[1]);
+        let frac = radio::score_frac(best);
+        let txt = if rs.wfb_frames == 0 { "等待信号".to_string() } else { format!("{:.0}%  丢包 {}", frac * 100.0, rs.packet_loss) };
+        let c = if rs.wfb_frames == 0 { AMBER } else { lq_color((frac * 100.0) as u8) };
+        kv(p, l, r, y, "链路", &txt, display(15.0), c);
+        y += 28.0;
+    }
+    y
+}
+
 /// Top of the link panel once a device is connected: LQ for ELRS, signal for RC2.
 fn link_quality(p: &Painter, l: f32, r: f32, mut y: f32, kind: BackendKind, st: &Status, time: f64) -> f32 {
     let big_block = |y: f32, zh: &str, en: &str, value: Option<f32>, right: String, frac: f32, col: Color32| -> f32 {
@@ -663,7 +692,17 @@ fn link_quality(p: &Painter, l: f32, r: f32, mut y: f32, kind: BackendKind, st: 
     }
 }
 
-fn link_panel(p: &Painter, rect: Rect, kind: BackendKind, st: &Status, view: &ControlView, history: &VecDeque<(f32, f32)>, time: f64) {
+#[allow(clippy::too_many_arguments)]
+fn link_panel(
+    p: &Painter,
+    rect: Rect,
+    kind: BackendKind,
+    st: &Status,
+    view: &ControlView,
+    radio: &radio::Status,
+    history: &VecDeque<(f32, f32)>,
+    time: f64,
+) {
     panel(p, rect);
     let (l, r) = (rect.left() + 18.0, rect.right() - 18.0);
     let mut y = section_title(p, pos2(l, rect.top() + 16.0), "链路", "LINK") + 18.0;
@@ -711,6 +750,10 @@ fn link_panel(p: &Painter, rect: Rect, kind: BackendKind, st: &Status, view: &Co
         };
         kv(p, l, r, y, ap_label(name), &txt, display(15.0), col);
         y += 26.0;
+    }
+
+    if radio.state != radio::State::Disabled {
+        y = radio_section(p, l, r, y + 6.0, radio);
     }
 
     // Link history chart along the bottom, when there is room for it.

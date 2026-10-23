@@ -1,0 +1,3 @@
+[submodule "third_party/aviateur"]
+	path = third_party/aviateur
+	url = https://github.com/OpenIPC/aviateur.git

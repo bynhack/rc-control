@@ -34,7 +34,21 @@ refresh_ms = 250
 [video]
 # 图传。收到画面时界面切到图传样式，没有画面时是仪表盘。
 enabled = true
-# 接收 RTP 视频的 UDP 端口。用 Aviateur 收图传时，把它的转发端口设成这个。
+# 接收 RTP 视频的 UDP 端口。内置图传会把画面发到这里；
+# 改用外部 Aviateur 收图传时，把它的转发端口设成这个。
 port = 5600
 # 视频编码：h265（OpenIPC 默认）或 h264。
 codec = "h265"
+
+[radio]
+# 内置图传接收：直接驱动 RTL8812AU 这类 USB 网卡（基于 Aviateur）。
+# 和外部 Aviateur 二选一，不要同时开。
+enabled = true
+# auto 自动选网卡；也可以写网卡名的一部分，例如 "RTL8812AU"。
+adapter = "auto"
+# 摄像头发射的信道：161 = 5805 MHz。要和摄像头设置一致。
+channel = 161
+# 信道宽度：20 或 40。
+width_mhz = 20
+# 地面站密钥 gs.key 的路径；不填就用 OpenIPC 默认密钥。
+# key = "/path/to/gs.key"

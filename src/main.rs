@@ -6,6 +6,7 @@ mod config;
 mod control;
 mod gui;
 mod protocol;
+mod radio;
 mod video;
 
 use anyhow::Context;
@@ -78,7 +79,7 @@ fn main() -> anyhow::Result<()> {
         cfg.backend = b;
     }
     if probe_video {
-        return probe(cfg.video);
+        return probe(cfg.video, cfg.radio);
     }
 
     let shared = Arc::new(Shared::new(Control::new(Duration::from_millis(cfg.heartbeat_timeout_ms))));
@@ -102,28 +103,38 @@ fn main() -> anyhow::Result<()> {
             runner.lock().unwrap_or_else(|e| e.into_inner()).stop();
         }
     };
+    let video = Arc::new(video::Shared::default());
+    let _receiver = cfg.video.enabled.then(|| video::Receiver::start(cfg.video.clone(), video.clone()));
+    let radio = Arc::new(radio::Radio::start(cfg.radio.clone(), cfg.video.port));
+
     let on_signal = shutdown.clone();
+    let on_signal_radio = radio.clone();
     ctrlc::set_handler(move || {
         on_signal();
-        println!("已归零并关闭串口");
+        on_signal_radio.shutdown();
+        println!("已归零并关闭串口和图传网卡");
         std::process::exit(0);
     })?;
 
-    let video = Arc::new(video::Shared::default());
-    let _receiver = cfg.video.enabled.then(|| video::Receiver::start(cfg.video.clone(), video.clone()));
-
-    let result = gui::run(gui::Gui::new(cfg, shared, runner, video));
+    let result = gui::run(gui::Gui::new(cfg, shared, runner, video, radio.shared.clone()));
+    radio.shutdown();
     shutdown();
     result
 }
 
 /// Receives video without opening any serial port and prints what arrives.
-fn probe(cfg: config::VideoConfig) -> anyhow::Result<()> {
+fn probe(cfg: config::VideoConfig, radio_cfg: config::RadioConfig) -> anyhow::Result<()> {
     let shared = Arc::new(video::Shared::default());
     let _rx = video::Receiver::start(cfg.clone(), shared.clone());
+    let radio = radio::Radio::start(radio_cfg, cfg.port);
     println!("监听 UDP {}，编码 {:?}，10 秒……", cfg.port, cfg.codec);
     for _ in 0..10 {
         std::thread::sleep(Duration::from_secs(1));
+        let r = radio.shared.status().clone();
+        println!(
+            "图传网卡 {:?}  {}  信道 {} / {} MHz  wifi 帧 {}  wfb 帧 {}  RTP {}  链路 {:?}  丢包 {}",
+            r.state, r.adapter, r.channel, r.width_mhz, r.wifi_frames, r.wfb_frames, r.rtp_packets, r.link_score, r.packet_loss
+        );
         let s = shared.stats().clone();
         println!(
             "收包 {:>6.0} kbps  RTP {:>5}  PT {}  帧组 {:>4}  NAL {:?}  解出 {:>5} 帧  {:>3.0} fps  {}x{}  解码 {:.1} ms  {}",

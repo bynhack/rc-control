@@ -39,7 +39,14 @@ cargo build --release
 
 程序在 UDP `5600`（配置 `[video]`）接收 RTP 视频（默认 H.265，也支持 H.264），用 FFmpeg 解码。收到画面时，中间面板切到图传样式：上方状态条，中间是原比例画面，下方是油门和转向；超过 1 秒没有画面，就自动切回仪表盘。
 
-现在由 Aviateur 负责收图传：在 Aviateur 里把转发端口设成 5600。以后计划把 Aviateur 的收包部分（devourer + wfb-ng，GPL-3.0）直接编进本程序。
+**内置图传接收（`[radio]`）：** 程序直接驱动 RTL8812AU 这类 USB 网卡收 OpenIPC 图传，不需要再开 Aviateur。收包部分就是 Aviateur 的代码（devourer 用户态驱动 + wfb-ng），以子模块形式放在 `third_party/aviateur`，原样编译，只把它的界面接口换成 `native/gui_interface.h`。左边面板的「图传 RADIO」显示网卡、信道和链路质量。
+
+- 默认信道 161（5805 MHz）、20 MHz、OpenIPC 默认密钥，要和摄像头一致。
+- 和外部 Aviateur 不能同时用：两边会抢同一块网卡和 UDP 8001。
+- 网卡卡死、连续几次启动失败时，界面会提示拔插网卡。
+- 对上游的一处修正：Aviateur 停止链路后不会关闭 UDP 8001，同一进程里再次启动会直接崩溃。构建时会给复制出来的 `tx_frame.cpp` 补上关闭代码（见 `native/CMakeLists.txt`），子模块里的源码保持不动。
+
+也可以继续用外部 Aviateur：把 `[radio] enabled` 设成 `false`，在 Aviateur 里打开 Forward RTP，端口设成 5600。
 
 ```bash
 ./target/release/rc-control --probe-video   # 只收图传 10 秒，打印码率、帧率、解码耗时
@@ -51,7 +58,14 @@ cargo build --release
 ffmpeg -re -f lavfi -i testsrc2=size=1280x720:rate=60 -c:v libx265 -preset ultrafast -tune zerolatency -x265-params keyint=30:repeat-headers=1 -f rtp -pkt_size 1400 rtp://127.0.0.1:5600
 ```
 
-**依赖：** 编译需要 FFmpeg 开发库（macOS 上 `brew install ffmpeg`）。现在程序动态链接 Homebrew 的 FFmpeg；Homebrew 升级 FFmpeg 大版本后，要重新 `cargo build`。正式分发前要把 FFmpeg 库一起打包。
+**获取源码：** 克隆后要拉取 Aviateur 子模块（只需要它的 devourer，不用拉 SDL 等）：
+
+```bash
+git submodule update --init third_party/aviateur
+git -C third_party/aviateur submodule update --init 3rd/devourer
+```
+
+**依赖：** 编译需要 CMake、libusb、libsodium 和 FFmpeg 开发库（macOS 上 `brew install cmake libusb libsodium ffmpeg`）。现在程序动态链接 Homebrew 的 FFmpeg；Homebrew 升级 FFmpeg 大版本后，要重新 `cargo build`。正式分发前要把 FFmpeg 库一起打包。
 
 ## 安全规则
 
@@ -87,6 +101,9 @@ src/
   video/rtp.rs      RTP 重组成 H.264/H.265 帧（丢包时丢弃残缺分片）
   video/decoder.rs  FFmpeg 低延迟解码，转 RGBA
   video/mod.rs      收流线程、统计
+  radio/mod.rs      内置图传：网卡选择、启动、断线重连、状态
+native/             C++ 层：编译 Aviateur 的收包代码，提供 C 接口（rcwfb.h）
+third_party/aviateur  子模块，GPL-3.0
 ```
 
 `cargo test` 运行协议、映射、安全规则的单元测试。不需要接硬件，RC2 用软件模拟设备测试。
@@ -108,4 +125,4 @@ RC_CONTROL_DEMO="0.45,0.85,high" RC_CONTROL_SNAPSHOT=/tmp/ui.bmp ./target/releas
 
 ## 许可证
 
-GPL-3.0，见 [LICENSE](LICENSE)。图传收包部分会基于 [Aviateur](https://github.com/OpenIPC/aviateur)（同为 GPL-3.0）。
+GPL-3.0，见 [LICENSE](LICENSE)。图传收包部分来自 [Aviateur](https://github.com/OpenIPC/aviateur)（同为 GPL-3.0）。

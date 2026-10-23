@@ -1,6 +1,7 @@
 //! Development aids, both off unless their environment variable is set:
 //!
-//! - `RC_CONTROL_SNAPSHOT=out.bmp` saves one rendered frame after ~1.5 s.
+//! - `RC_CONTROL_SNAPSHOT=out.bmp` saves one rendered frame after ~1.5 s
+//!   (`RC_CONTROL_SNAPSHOT_FRAMES` overrides the 90-frame wait).
 //! - `RC_CONTROL_DEMO=steer,throttle[,low|mid|high]` (each -1..1) fakes input
 //!   for UI review.
 //!   It refuses to act while a device is connected, so it can never move a
@@ -16,6 +17,7 @@ const DEMO_ARM_FRAME: u32 = 20;
 #[derive(Default)]
 pub struct Dev {
     snapshot: Option<PathBuf>,
+    snapshot_after: u32,
     requested: bool,
     demo: Option<(f32, f32)>,
     demo_speed: Option<Speed>,
@@ -43,7 +45,11 @@ impl Dev {
             Some("low") => Some(Speed::Low),
             _ => None,
         };
-        Dev { snapshot, demo, demo_speed, ..Default::default() }
+        let snapshot_after = std::env::var("RC_CONTROL_SNAPSHOT_FRAMES")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(SNAPSHOT_AFTER_FRAMES);
+        Dev { snapshot, snapshot_after, demo, demo_speed, ..Default::default() }
     }
 
     /// Neutral until the arm frame, armed with neutral input, then the demo values.
@@ -63,7 +69,7 @@ impl Dev {
     pub fn end_frame(&mut self, ctx: &egui::Context) {
         self.frames += 1;
         let Some(path) = &self.snapshot else { return };
-        if !self.requested && self.frames >= SNAPSHOT_AFTER_FRAMES {
+        if !self.requested && self.frames >= self.snapshot_after {
             ctx.send_viewport_cmd(ViewportCommand::Screenshot(Default::default()));
             self.requested = true;
         }
