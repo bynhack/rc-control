@@ -2,7 +2,8 @@
 //! interval: the steady stream is what tells the module a handset is present,
 //! and every frame carries the complete state, so a lost frame self-heals.
 
-use super::{supervise, Shared};
+use super::{supervise, Invert, Shared};
+use crate::config::BackendKind;
 use anyhow::Context;
 use crate::config::ElrsConfig;
 use crate::protocol::crsf::{self, Event, CHANNELS, CH_CENTER};
@@ -19,11 +20,11 @@ pub fn run(cfg: ElrsConfig, shared: Arc<Shared>, stop: Arc<AtomicBool>) {
     supervise(&shared, &stop, || session(&cfg, &shared, &stop));
 }
 
-pub fn channels(cfg: &ElrsConfig, steering: f32, throttle: f32) -> [u16; CHANNELS] {
+pub fn channels(cfg: &ElrsConfig, invert: Invert, steering: f32, throttle: f32) -> [u16; CHANNELS] {
+    let (steering, throttle) = invert.apply(steering, throttle);
     let mut ch = [CH_CENTER; CHANNELS];
-    let sign = |inv: bool| if inv { -1.0 } else { 1.0 };
-    ch[cfg.steering_channel - 1] = crsf::to_channel(steering * sign(cfg.steering_invert));
-    ch[cfg.throttle_channel - 1] = crsf::to_channel(throttle * sign(cfg.throttle_invert));
+    ch[cfg.steering_channel - 1] = crsf::to_channel(steering);
+    ch[cfg.throttle_channel - 1] = crsf::to_channel(throttle);
     ch
 }
 
@@ -66,7 +67,7 @@ fn session(cfg: &ElrsConfig, shared: &Shared, stop: &AtomicBool) -> anyhow::Resu
         let now = Instant::now();
         if now >= next_frame {
             let out = shared.output();
-            let ch = channels(cfg, out.steering, out.throttle);
+            let ch = channels(cfg, shared.invert(BackendKind::Elrs), out.steering, out.throttle);
             port.write_all(&crsf::rc_frame(&ch))?;
             next_frame += interval;
             if next_frame < now {
@@ -121,14 +122,14 @@ mod tests {
     #[test]
     fn maps_onto_configured_channels() {
         let cfg = ElrsConfig { steering_channel: 1, throttle_channel: 2, ..Default::default() };
-        let ch = channels(&cfg, 1.0, -1.0);
+        let ch = channels(&cfg, Invert::default(), 1.0, -1.0);
         assert_eq!((ch[0], ch[1], ch[2]), (1811, 172, 992));
     }
 
     #[test]
     fn invert_flips_direction() {
-        let cfg = ElrsConfig { steering_invert: true, throttle_channel: 3, ..Default::default() };
-        let ch = channels(&cfg, 1.0, 0.5);
+        let cfg = ElrsConfig { throttle_channel: 3, ..Default::default() };
+        let ch = channels(&cfg, Invert { steering: true, throttle: false }, 1.0, 0.5);
         assert_eq!(ch[0], 172);
         assert_eq!(ch[1], 992);
         assert_eq!(ch[2], crsf::to_channel(0.5));

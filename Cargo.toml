@@ -13,6 +13,7 @@ ffmpeg-next = { version = "9", default-features = false, features = ["codec", "f
 serde = { version = "1", features = ["derive"] }
 serialport = { version = "4", default-features = false }
 toml = "0.8"
+toml_edit = "0.22"
 
 [build-dependencies]
 cmake = "0.1"

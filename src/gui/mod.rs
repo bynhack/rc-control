@@ -7,7 +7,7 @@ mod dev;
 mod theme;
 mod widgets;
 
-use crate::backend::{Runner, Shared, Status};
+use crate::backend::{Invert, Runner, Shared, Status};
 use crate::config::{BackendKind, Config};
 use crate::control::{ControlView, Speed};
 use crate::{radio, video};
@@ -41,6 +41,8 @@ struct Anim {
 
 pub struct Gui {
     cfg: Config,
+    /// Where direction changes are saved.
+    config_path: std::path::PathBuf,
     shared: Arc<Shared>,
     runner: Arc<Mutex<Runner>>,
     /// Input positions, -1..=1.
@@ -62,9 +64,17 @@ pub struct Gui {
 }
 
 impl Gui {
-    pub fn new(cfg: Config, shared: Arc<Shared>, runner: Arc<Mutex<Runner>>, video: Arc<video::Shared>, radio: Arc<radio::Shared>) -> Self {
+    pub fn new(
+        cfg: Config,
+        config_path: std::path::PathBuf,
+        shared: Arc<Shared>,
+        runner: Arc<Mutex<Runner>>,
+        video: Arc<video::Shared>,
+        radio: Arc<radio::Shared>,
+    ) -> Self {
         Gui {
             cfg,
+            config_path,
             shared,
             runner,
             steering: 0.0,
@@ -490,7 +500,7 @@ impl Gui {
 
         // Speed tiers.
         y = small_label(p, l, y, "速度档", "SPEED");
-        let (gap, th) = (8.0, 74.0);
+        let (gap, th) = (8.0, 66.0);
         let tw = (r - l - 2.0 * gap) / 3.0;
         for (i, (s, letter, zh)) in [(Speed::Low, "L", "低速"), (Speed::Mid, "M", "中速"), (Speed::High, "H", "高速")].into_iter().enumerate() {
             let tr = Rect::from_min_size(pos2(l + i as f32 * (tw + gap), y), vec2(tw, th));
@@ -520,6 +530,30 @@ impl Gui {
         p.text(pos2(l, y), Align2::LEFT_TOP, format!("油门上限 {:.0}%", view.speed.scale() * 100.0), body(12.0), TEXT_DIM);
         y += 28.0;
 
+        // Direction flips for the current scheme: applied live, saved to the config.
+        y = small_label(p, l, y, "方向", "DIRECTION");
+        let inv = self.shared.invert(kind);
+        let cw = (r - l - gap) / 2.0;
+        for (i, (name, on)) in [("转向反向", inv.steering), ("油门反向", inv.throttle)].into_iter().enumerate() {
+            let cr = Rect::from_min_size(pos2(l + i as f32 * (cw + gap), y), vec2(cw, 32.0));
+            let resp = hit(ui, cr, name);
+            if on {
+                rect_glow(p, cr, 8.0, CYAN, 0.5);
+                p.rect(cr, 8.0, tint(CYAN), stroke(1.0, CYAN), StrokeKind::Inside);
+            } else {
+                p.rect(cr, 8.0, if resp.hovered() { hover() } else { Color32::TRANSPARENT }, stroke(1.0, PANEL_EDGE), StrokeKind::Inside);
+            }
+            p.text(cr.center(), Align2::CENTER_CENTER, name, body(13.0), if on { CYAN } else { TEXT_DIM });
+            if resp.clicked() {
+                let new = if i == 0 { Invert { steering: !on, ..inv } } else { Invert { throttle: !on, ..inv } };
+                self.shared.set_invert(kind, new);
+                if let Err(e) = crate::config::save_invert(&self.config_path, kind, new.steering, new.throttle) {
+                    self.note = Some((format!("已生效，但保存配置失败：{e:#}"), Instant::now()));
+                }
+            }
+        }
+        y += 32.0 + 12.0;
+
         if kind == BackendKind::Rc2 {
             y = small_label(p, l, y, "灯光", "LIGHTS");
             let cw = (r - l - 2.0 * gap) / 3.0;
@@ -538,7 +572,7 @@ impl Gui {
                     self.lights ^= bit;
                 }
             }
-            y += 32.0 + 16.0;
+            y += 32.0 + 12.0;
         }
 
         // What actually went out on the wire.

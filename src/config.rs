@@ -130,6 +130,24 @@ impl Default for Rc2Config {
     }
 }
 
+/// Writes one backend's direction flips into the config file, touching only
+/// those two keys so the rest of the file (comments included) is kept.
+pub fn save_invert(path: &Path, kind: BackendKind, steering: bool, throttle: bool) -> anyhow::Result<()> {
+    let text = if path.exists() { std::fs::read_to_string(path)? } else { String::new() };
+    let mut doc: toml_edit::DocumentMut = text.parse()?;
+    let section = match kind {
+        BackendKind::Elrs => "elrs",
+        BackendKind::Rc2 => "rc2",
+    };
+    if !doc.contains_table(section) {
+        doc[section] = toml_edit::table();
+    }
+    doc[section]["steering_invert"] = toml_edit::value(steering);
+    doc[section]["throttle_invert"] = toml_edit::value(throttle);
+    std::fs::write(path, doc.to_string())?;
+    Ok(())
+}
+
 impl Config {
     pub fn load(path: &Path) -> anyhow::Result<Config> {
         if !path.exists() {
@@ -167,6 +185,24 @@ mod tests {
         assert_eq!(cfg.video.port, 5600);
         assert_eq!(cfg.video.codec, crate::video::rtp::Codec::H265);
         assert_eq!(cfg.radio.channel, 161);
+    }
+
+    #[test]
+    fn save_invert_keeps_comments_and_other_keys() {
+        let dir = std::env::temp_dir().join(format!("rc-control-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("rc-control.toml");
+        std::fs::write(&path, "# mine\n[elrs]\n# the adapter\nport = \"COM5\"\nbaud = 400000\n").unwrap();
+        save_invert(&path, BackendKind::Elrs, true, false).unwrap();
+        let text = std::fs::read_to_string(&path).unwrap();
+        assert!(text.contains("# mine") && text.contains("# the adapter") && text.contains("port = \"COM5\""));
+        let cfg: Config = toml::from_str(&text).unwrap();
+        assert!(cfg.elrs.steering_invert && !cfg.elrs.throttle_invert);
+        assert_eq!(cfg.elrs.baud, 400_000);
+        save_invert(&path, BackendKind::Rc2, false, true).unwrap();
+        let cfg: Config = toml::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert!(cfg.rc2.throttle_invert && cfg.elrs.steering_invert);
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]

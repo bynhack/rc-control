@@ -82,7 +82,7 @@ fn main() -> anyhow::Result<()> {
         return probe(cfg.video, cfg.radio);
     }
 
-    let shared = Arc::new(Shared::new(Control::new(Duration::from_millis(cfg.heartbeat_timeout_ms))));
+    let shared = Arc::new(Shared::new(Control::new(Duration::from_millis(cfg.heartbeat_timeout_ms)), &cfg));
 
     // Watchdog independent of any backend or the web server.
     let wd = shared.clone();
@@ -116,7 +116,7 @@ fn main() -> anyhow::Result<()> {
         std::process::exit(0);
     })?;
 
-    let result = gui::run(gui::Gui::new(cfg, shared, runner, video, radio.shared.clone()));
+    let result = gui::run(gui::Gui::new(cfg, path, shared, runner, video, radio.shared.clone()));
     radio.shutdown();
     shutdown();
     result

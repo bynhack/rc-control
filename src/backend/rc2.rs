@@ -3,7 +3,8 @@
 //! refresh periodically, and read one telemetry point at a time in between so
 //! control writes never queue behind a full telemetry sweep.
 
-use super::{supervise, Shared};
+use super::{supervise, Invert, Shared};
+use crate::config::BackendKind;
 use crate::config::Rc2Config;
 use crate::protocol::rc2::{Rc2, NOT_CONNECTED};
 use anyhow::Context;
@@ -24,11 +25,9 @@ pub fn run(cfg: Rc2Config, shared: Arc<Shared>, stop: Arc<AtomicBool>) {
 }
 
 /// Device units: Direction -39..39, Switch -50..50 (signed drive).
-pub fn targets(cfg: &Rc2Config, steering: f32, throttle: f32) -> (i32, i32) {
-    let sign = |inv: bool| if inv { -1.0 } else { 1.0 };
-    let dir = (steering * sign(cfg.steering_invert) * DIRECTION_MAX).round() as i32;
-    let sw = (throttle * sign(cfg.throttle_invert) * SWITCH_MAX).round() as i32;
-    (dir, sw)
+pub fn targets(invert: Invert, steering: f32, throttle: f32) -> (i32, i32) {
+    let (steering, throttle) = invert.apply(steering, throttle);
+    ((steering * DIRECTION_MAX).round() as i32, (throttle * SWITCH_MAX).round() as i32)
 }
 
 fn index_of(names: &[String], want: &str) -> anyhow::Result<usize> {
@@ -78,7 +77,7 @@ fn session(cfg: &Rc2Config, shared: &Shared, stop: &AtomicBool) -> anyhow::Resul
         }
 
         let out = shared.output();
-        let (dir, sw) = targets(cfg, out.steering, out.throttle);
+        let (dir, sw) = targets(shared.invert(BackendKind::Rc2), out.steering, out.throttle);
         let target = (dir, sw, out.lights);
         let due = last_write.elapsed() >= refresh;
 
@@ -126,10 +125,9 @@ mod tests {
 
     #[test]
     fn scales_to_device_units() {
-        let cfg = Rc2Config::default();
-        assert_eq!(targets(&cfg, 1.0, -1.0), (39, -50));
-        assert_eq!(targets(&cfg, 0.5, 0.34), (20, 17));
-        let inv = Rc2Config { steering_invert: true, ..Default::default() };
-        assert_eq!(targets(&inv, 1.0, 0.0), (-39, 0));
+        assert_eq!(targets(Invert::default(), 1.0, -1.0), (39, -50));
+        assert_eq!(targets(Invert::default(), 0.5, 0.34), (20, 17));
+        assert_eq!(targets(Invert { steering: true, throttle: false }, 1.0, 0.0), (-39, 0));
+        assert_eq!(targets(Invert { steering: false, throttle: true }, 0.0, 0.5), (0, -25));
     }
 }

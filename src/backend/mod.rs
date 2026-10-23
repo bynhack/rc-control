@@ -45,14 +45,43 @@ impl Status {
     }
 }
 
+/// Per-backend direction flips, applied at the last step before sending so
+/// the dashboard keeps showing the direction the driver asked for.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Invert {
+    pub steering: bool,
+    pub throttle: bool,
+}
+
+impl Invert {
+    pub fn apply(self, steering: f32, throttle: f32) -> (f32, f32) {
+        let flip = |on: bool, v: f32| if on { -v } else { v };
+        (flip(self.steering, steering), flip(self.throttle, throttle))
+    }
+}
+
 pub struct Shared {
     pub control: Mutex<Control>,
     pub status: Mutex<Status>,
+    /// Indexed by `BackendKind as usize`; changeable at runtime from the GUI.
+    inverts: Mutex<[Invert; 2]>,
 }
 
 impl Shared {
-    pub fn new(control: Control) -> Self {
-        Shared { control: Mutex::new(control), status: Mutex::new(Status::default()) }
+    pub fn new(control: Control, cfg: &Config) -> Self {
+        let inverts = [
+            Invert { steering: cfg.elrs.steering_invert, throttle: cfg.elrs.throttle_invert },
+            Invert { steering: cfg.rc2.steering_invert, throttle: cfg.rc2.throttle_invert },
+        ];
+        Shared { control: Mutex::new(control), status: Mutex::new(Status::default()), inverts: Mutex::new(inverts) }
+    }
+
+    pub fn invert(&self, kind: BackendKind) -> Invert {
+        self.inverts.lock().unwrap_or_else(|e| e.into_inner())[kind as usize]
+    }
+
+    pub fn set_invert(&self, kind: BackendKind, invert: Invert) {
+        self.inverts.lock().unwrap_or_else(|e| e.into_inner())[kind as usize] = invert;
     }
 
     pub fn control(&self) -> MutexGuard<'_, Control> {
