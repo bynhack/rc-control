@@ -677,6 +677,20 @@ fn link_quality(p: &Painter, l: f32, r: f32, mut y: f32, kind: BackendKind, st: 
             }
             y
         }
+        (BackendKind::Elrs, None) if st.tx_only() => {
+            // Control works one-way; there is just no wire to hear back on.
+            let t = spaced(p, pos2(l, y + 2.0), Align2::LEFT_TOP, "TX ONLY", display(32.0), AMBER, 2.0);
+            p.text(pos2(l, t.bottom() + 8.0), Align2::LEFT_TOP, "只发送，读不到回传", bold(13.0), TEXT);
+            let g = p.layout(
+                "控制信号照常发出。高频头的 CRSF 只接了 TXD，链路质量要接上 RXD（经 1kΩ 电阻）才能读到。".to_string(),
+                body(12.0),
+                TEXT_DIM,
+                r - l,
+            );
+            let h = g.size().y;
+            p.galley(pos2(l, t.bottom() + 30.0), g, TEXT_DIM);
+            t.bottom() + 30.0 + h + 14.0
+        }
         (BackendKind::Elrs, None) => {
             let blink = 0.55 + 0.45 * (0.5 + 0.5 * (time * 2.0).sin() as f32);
             let t = spaced(p, pos2(l, y + 2.0), Align2::LEFT_TOP, "NO LINK", display(32.0), alpha(RED, blink), 2.0);

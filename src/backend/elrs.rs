@@ -42,6 +42,8 @@ fn session(cfg: &ElrsConfig, shared: &Shared, stop: &AtomicBool) -> anyhow::Resu
         st.port = name;
         st.device.clear();
         st.error.clear();
+        st.replies = false;
+        st.connected_at = Some(Instant::now());
     }
 
     let interval = Duration::from_millis(cfg.frame_interval_ms);
@@ -96,6 +98,7 @@ fn apply(shared: &Shared, events: Vec<Event>) {
         return;
     }
     let mut st = shared.status();
+    st.replies = true;
     for ev in events {
         match ev {
             Event::LinkStats(l) => st.link = Some(l),

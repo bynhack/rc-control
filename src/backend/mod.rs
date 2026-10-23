@@ -27,6 +27,22 @@ pub struct Status {
     /// Last values put on the wire, in the backend's own units.
     pub sent: BTreeMap<String, f32>,
     pub resets: u32,
+    /// Any valid frame has come back from the device since connecting. An
+    /// ELRS module wired TX-only (no RX return) never sets this.
+    pub replies: bool,
+    #[serde(skip)]
+    pub connected_at: Option<std::time::Instant>,
+}
+
+/// How long a connected device may stay silent before we conclude there is
+/// no return path (the ELRS backend pings once a second).
+pub const REPLY_GRACE: std::time::Duration = std::time::Duration::from_secs(3);
+
+impl Status {
+    /// Connected, but nothing has ever come back: wired transmit-only.
+    pub fn tx_only(&self) -> bool {
+        self.connected && !self.replies && self.connected_at.is_some_and(|t| t.elapsed() > REPLY_GRACE)
+    }
 }
 
 pub struct Shared {
