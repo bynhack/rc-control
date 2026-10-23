@@ -23,6 +23,14 @@ fn main() {
     match target.as_str() {
         "macos" => println!("cargo:rustc-link-lib=c++"),
         "linux" => println!("cargo:rustc-link-lib=stdc++"),
+        // MinGW-w64 (MSYS2/UCRT64): C++ 运行库走静态 libstdc++ 和 libgcc_eh，
+        // 网络代码用的 Winsock 也要显式链接。
+        "windows" => {
+            println!("cargo:rustc-link-lib=static=stdc++");
+            println!("cargo:rustc-link-lib=static=gcc_eh");
+            println!("cargo:rustc-link-lib=dylib=ws2_32");
+            println!("cargo:rustc-link-lib=dylib=winmm");
+        }
         _ => {}
     }
 }

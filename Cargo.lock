@@ -1144,8 +1144,6 @@ dependencies = [
 [[package]]
 name = "ffmpeg-sys-next"
 version = "9.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c6f932d8c1cede016c65d4f1435f323369c99c74df55143b18676aa10e7603f9"
 dependencies = [
  "bindgen",
  "cc",
@@ -1515,6 +1513,19 @@ name = "hexf-parse"
 version = "0.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dfa686283ad6dd069f105e5ab091b04c62850d3e4cf5d67debad1933f55023df"
+
+[[package]]
+name = "hidapi"
+version = "2.6.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "818c0e1d27887aaf76fe737042e27a66b796a7b099e6d2e1a72d106c2dff3fa6"
+dependencies = [
+ "cc",
+ "cfg-if",
+ "libc",
+ "pkg-config",
+ "windows-sys 0.61.2",
+]
 
 [[package]]
 name = "icu_collections"
@@ -2653,6 +2664,7 @@ dependencies = [
  "ctrlc",
  "eframe",
  "ffmpeg-next",
+ "hidapi",
  "pkg-config",
  "serde",
  "serialport",

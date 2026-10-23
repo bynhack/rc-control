@@ -29,11 +29,47 @@ cargo build --release
 
 ## Windows
 
-在 Windows 上装好 Rust（https://rustup.rs ），在项目目录运行 `cargo build --release`，得到 `target\release\rc-control.exe`。分发时把 exe 和 `rc-control.toml` 放在同一个文件夹即可，不需要别的运行环境。Release 版双击运行不会弹出黑色命令行窗口。界面用系统自带的微软雅黑显示中文。
+在 Windows 上用 MSYS2 UCRT64 工具链构建（等价于 macOS 的 Homebrew 环境方案）：
+
+1. 安装 MSYS2 到 `C:\msys64`，然后装一套依赖（git bash 或 PowerShell 里跑一次）：
+
+   ```
+   C:\msys64\usr\bin\pacman.exe -S --noconfirm mingw-w64-ucrt-x86_64-gcc mingw-w64-ucrt-x86_64-cmake mingw-w64-ucrt-x86_64-ninja mingw-w64-ucrt-x86_64-pkgconf mingw-w64-ucrt-x86_64-clang mingw-w64-ucrt-x86_64-llvm mingw-w64-ucrt-x86_64-libusb mingw-w64-ucrt-x86_64-libsodium mingw-w64-ucrt-x86_64-ffmpeg mingw-w64-ucrt-x86_64-rust
+   ```
+
+2. 以后构建直接用：
+
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File scripts\build.ps1 --release
+   ```
+
+   得到 `target\release\rc-control.exe`。这个脚本负责设置 UCRT64 的 PATH、pkg-config、CMake(Ninja) 和 libclang 环境。国内网络建议把 `%USERPROFILE%\.cargo\config.toml` 的 crates.io 源换成国内镜像。
+
+3. 发布前把 FFmpeg/libusb/libsodium 的 DLL 部署到 exe 旁（不再需要 MSYS2 环境）：
+
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File scripts\deploy-dlls.ps1
+   ```
+
+   Release 版双击运行不会弹出黑色命令行窗口。界面用系统自带的微软雅黑显示中文。
+
+关于本仓库的 Windows 相关改动：
+
+- `vendor/ffmpeg-sys-next-9.0.1`：bindgen 解析 `<d3d11.h>` 会把 `amxintrin.h` 的 `__tile1024i_str` 带进来，`packed`+`align` 冲突在 rustc 下编译不过（E0058/E0080），已在 `hwcontext_stubs` 补 d3d11/d3d12/d3d9/dxva2 空 stub，经 `[patch.crates-io]` 使用（报错形态是 E0587/E0080）。
+- Aviateur 的两处 MinGW 兼容修正（子模块源码不改，构建时打在复制出来的文件上，见 `native/CMakeLists.txt` 的 `patch_staged`）：`net_compat.h` 里 MinGW 已带 `clock_gettime`（winpthreads），内联版本只对非 MinGW 生效；`compat/getopt.h` 里 getopt 全局变量的 weak 定义在 PE 链接器下会重复，MinGW 下不提供。
+- `native/CMakeLists.txt`：`/utf-8` 只对 MSVC 生效；`build.rs` 为 MinGW 链接静态 libstdc++/gcc_eh 和 ws2_32。
 
 - CH340（RC2）的驱动一般由 Windows 更新自动安装。
 - CH9102（高频头）如果设备管理器里没有出现 COM 口，要装 WCH 的 CH343SER 驱动。
 - 配置里也可以把端口写死成 `COM5` 这样的名字。
+- 图传网卡（RTL8812AU）在 Windows 上必须绑定 WinUSB/libusbK 驱动，Realtek 的 Wi-Fi 驱动（RtlWlanu）打不开 USB。可以用 Zadig 替换，或直接用仓库里的脚本（会弹 UAC 确认）：
+
+  ```powershell
+  powershell -ExecutionPolicy Bypass -File scripts\bind-8812au-winusb.ps1
+  ```
+
+  绑定后系统里不再有这块"Wi-Fi 网卡"，属于预期。脚本执行前会把原注册表导出到 `scripts\rtl8812au-before-winusb-<时间>.reg`，想还原回 Realtek 驱动时双击它，再拔插网卡。绑定检查：`Get-PnpDevice | ? InstanceId -match 'VID_0BDA'` 的 Service 应为 `WinUSB`。
+- RC2 的 CH340 如果被 Windows 自动绑成了 WinUSB（不出 COM 口），用 `scripts\bind-ch340-ch341.ps1` 绑回 WCH 串口驱动（先装官网 CH341SER）。
 
 ## 图传
 
@@ -66,6 +102,16 @@ git -C third_party/aviateur submodule update --init 3rd/devourer
 ```
 
 **依赖：** 编译需要 CMake、libusb、libsodium 和 FFmpeg 开发库（macOS 上 `brew install cmake libusb libsodium ffmpeg`）。现在程序动态链接 Homebrew 的 FFmpeg；Homebrew 升级 FFmpeg 大版本后，要重新 `cargo build`。正式分发前要把 FFmpeg 库一起打包。
+
+## 方向盘
+
+接上 Thrustmaster T300RS（基座 044f:b66e）就自动接管转向和油门：油门踏板减刹车踏板得到油门量，直接读 HID 报告，不需要官方驱动。250 ms 没有新数据（拔线）时回到窗口滑条，油门照常回零。配置在 `[wheel]`。
+
+```bash
+./target/release/rc-control --probe-wheel   # 记录方向盘/踏板的 HID 报告，按提示操作，生成 wheel-trace.csv
+```
+
+另外两个排查命令：`--probe-elrs`（开高频头串口发 250 帧中位 CRSF）、`--probe-rc2`（逐步执行 RC2 握手并计时）。
 
 ## 安全规则
 
@@ -102,8 +148,11 @@ src/
   video/decoder.rs  FFmpeg 低延迟解码，转 RGBA
   video/mod.rs      收流线程、统计
   radio/mod.rs      内置图传：网卡选择、启动、断线重连、状态
+  wheel.rs          方向盘：T300RS HID 读取、报告解析、--probe-wheel
 native/             C++ 层：编译 Aviateur 的收包代码，提供 C 接口（rcwfb.h）
 third_party/aviateur  子模块，GPL-3.0
+vendor/             ffmpeg-sys-next 9.0.1 + Windows D3D 空 stub（[patch.crates-io]）
+scripts/            Windows：构建、部署 DLL、绑定 8812AU/CH340 驱动
 ```
 
 `cargo test` 运行协议、映射、安全规则的单元测试。不需要接硬件，RC2 用软件模拟设备测试。

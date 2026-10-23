@@ -52,3 +52,15 @@ channel = 161
 width_mhz = 20
 # 地面站密钥 gs.key 的路径；不填就用 OpenIPC 默认密钥。
 # key = "/path/to/gs.key"
+
+[wheel]
+# 方向盘（Thrustmaster T300RS，直接读 HID）。插着就接管转向和油门，
+# 没插或 250 ms 没有新数据时，回到窗口里的滑条。
+enabled = true
+# 输入端反向：按个人习惯。（车上舵机方向反了用控制面板的“转向反向”。）
+steering_invert = false
+throttle_invert = false
+# 转向中位死区 0..0.1，盘的细小抖动不算转向。
+steering_deadzone = 0.02
+# 目前只支持 auto（按 VID 044f / PID b66e 找 T300RS 基座）。
+device = "auto"

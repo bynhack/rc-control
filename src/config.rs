@@ -20,6 +20,35 @@ pub struct Config {
     pub rc2: Rc2Config,
     pub video: VideoConfig,
     pub radio: RadioConfig,
+    pub wheel: WheelConfig,
+}
+
+/// 方向盘硬件输入（Thrustmaster T300RS 等裸 HID 设备）。
+#[derive(Debug, Clone, Deserialize)]
+#[serde(default)]
+pub struct WheelConfig {
+    /// 窗口开着时后台读取并接管 steering/throttle。
+    pub enabled: bool,
+    /// 方向是否反相（不同人习惯不同）。
+    pub steering_invert: bool,
+    /// 油门/刹车按各自刻度归一后整体是否反相。
+    pub throttle_invert: bool,
+    /// 转向中位死区 0..0.1：细小抖动不算转向。
+    pub steering_deadzone: f32,
+    /// "auto" 用 VID 044f 自动找，或写死 "T300RS" 等名字片段（暂只支持 auto）。
+    pub device: String,
+}
+
+impl Default for WheelConfig {
+    fn default() -> Self {
+        WheelConfig {
+            enabled: true,
+            steering_invert: false,
+            throttle_invert: false,
+            steering_deadzone: 0.02,
+            device: "auto".into(),
+        }
+    }
 }
 
 /// Built-in video radio (Aviateur's receive path on an RTL8812AU-class
@@ -99,6 +128,7 @@ impl Default for Config {
             rc2: Rc2Config::default(),
             video: VideoConfig::default(),
             radio: RadioConfig::default(),
+            wheel: WheelConfig::default(),
         }
     }
 }

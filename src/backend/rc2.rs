@@ -13,8 +13,8 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 /// WCH CH340.
-const USB_VID: u16 = 0x1a86;
-const USB_PID: u16 = 0x7523;
+pub const USB_VID: u16 = 0x1a86;
+pub const USB_PID: u16 = 0x7523;
 
 pub const DIRECTION_MAX: f32 = 39.0;
 pub const SWITCH_MAX: f32 = 50.0;

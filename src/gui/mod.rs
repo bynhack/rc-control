@@ -27,6 +27,30 @@ const ESTOP_FLASH: f32 = 0.6;
 const HISTORY_LEN: usize = 120;
 const HISTORY_EVERY: Duration = Duration::from_millis(250);
 
+/// 中位死区：|v| 在 dz 里归零，之外线性保持到 ±1。
+fn deadzone(v: f32, dz: f32) -> f32 {
+    let dz = dz.clamp(0.0, 0.5);
+    if v.abs() <= dz {
+        0.0
+    } else {
+        (v - v.signum() * dz) / (1.0 - dz)
+    }
+}
+
+#[cfg(test)]
+mod deadzone_tests {
+    use super::deadzone;
+
+    #[test]
+    fn deadzone_zeroes_small_and_keeps_full_range() {
+        assert_eq!(deadzone(0.01, 0.02), 0.0);
+        assert_eq!(deadzone(-0.02, 0.02), 0.0);
+        assert!((deadzone(1.0, 0.02) - 1.0).abs() < 1e-6);
+        assert!((deadzone(-1.0, 0.02) + 1.0).abs() < 1e-6);
+        assert!(deadzone(0.03, 0.02) > 0.0 && deadzone(0.03, 0.02) < 0.03);
+    }
+}
+
 /// RC2 `Status` bits.
 const LIGHTS: [(&str, u8); 3] = [("示宽灯", 0x2), ("近光灯", 0x4), ("鸣笛", 0x8)];
 
@@ -61,6 +85,8 @@ pub struct Gui {
     video_seen: u64,
     radio: Arc<radio::Shared>,
     dev: dev::Dev,
+    /// 方向盘后台读取；None 表示没启用或启动失败（错误在 note 里）。
+    wheel: Option<crate::wheel::Live>,
 }
 
 impl Gui {
@@ -72,6 +98,15 @@ impl Gui {
         video: Arc<video::Shared>,
         radio: Arc<radio::Shared>,
     ) -> Self {
+        let (wheel, wheel_error) = if cfg.wheel.enabled {
+            match crate::wheel::Live::start() {
+                Ok(w) => (Some(w), None),
+                Err(e) => (None, Some(format!("方向盘输入不可用：{e}"))),
+            }
+        } else {
+            (None, None)
+        };
+        let now = Instant::now();
         Gui {
             cfg,
             config_path,
@@ -81,7 +116,7 @@ impl Gui {
             throttle: 0.0,
             lights: 0,
             arm_confirm_until: None,
-            note: None,
+            note: wheel_error.map(|e| (e, now)),
             estop_flash: None,
             anim: Anim::default(),
             history: VecDeque::with_capacity(HISTORY_LEN),
@@ -91,6 +126,7 @@ impl Gui {
             video_seen: 0,
             radio,
             dev: dev::Dev::from_env(),
+            wheel,
         }
     }
 
@@ -151,6 +187,15 @@ impl eframe::App for Gui {
         if let Some(d) = &demo {
             self.steering = d.steering;
             self.throttle = d.throttle;
+        }
+        // 方向盘有 250 ms 内的新输入就接管（盘上数值优先于调试页滑条，
+        // 也压过 demo 值：方向盘是用来真开的）。
+        if let Some(w) = &self.wheel {
+            if let Some(a) = w.poll(Duration::from_millis(250)) {
+                let s0 = if self.cfg.wheel.steering_invert { -a.steering } else { a.steering };
+                self.steering = deadzone(s0, self.cfg.wheel.steering_deadzone);
+                self.throttle = if self.cfg.wheel.throttle_invert { -a.throttle } else { a.throttle };
+            }
         }
         {
             let mut c = self.shared.control();

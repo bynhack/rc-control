@@ -13,8 +13,8 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 /// WCH CH9102, the USB-serial chip on the Jumper AION Nano.
-const USB_VID: u16 = 0x1a86;
-const USB_PID: u16 = 0x55d4;
+pub const USB_VID: u16 = 0x1a86;
+pub const USB_PID: u16 = 0x55d4;
 
 pub fn run(cfg: ElrsConfig, shared: Arc<Shared>, stop: Arc<AtomicBool>) {
     supervise(&shared, &stop, || session(&cfg, &shared, &stop));
