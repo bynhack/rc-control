@@ -1,0 +1,8 @@
+dependencies:
+  idf: ">=5.1"
+  # USB host HID class driver (raw input reports for non-boot devices).
+  espressif/usb_host_hid: "^1.0.3"
+  # 1.28" round 240x240 status screen.
+  espressif/esp_lcd_gc9a01: "^2.0.0"
+  espressif/esp_lvgl_port: "^2.4.0"
+  lvgl/lvgl: "^9.2.0"
