@@ -7,7 +7,7 @@
 | Jumper AION Nano（USB 已改为 CRSF 串口） | 直接插 USB | `port = "auto"`，115200，20 ms |
 | BETAFPV Micro TX 等外置高频头 | USB 转串口模块 TXD → 高频头 CRSF 脚（3.3 V 电平） | 写死端口，400000，4 ms |
 
-界面是原生窗口（egui），深色仪表盘风格：中间是油门仪表和转向条（有图传时切成画面），左边是链路状态、图传网卡和 30 秒链路历史，右边是解锁、速度档、方向反转和线上发送的值。可以用窗口滑条或 Thrustmaster T300RS 方向盘操作。
+界面是原生窗口（egui），深色仪表盘风格：中间是油门仪表和转向条（有图传时切成画面），左边是链路状态、图传网卡和 30 秒链路历史，右边是解锁、速度档、方向反转和线上发送的值。可以用窗口滑条、MOZA R5 或 Thrustmaster T300RS 方向盘操作。
 
 ![控制台](docs/dashboard.png)
 
@@ -101,7 +101,7 @@ git -C third_party/aviateur submodule update --init 3rd/devourer
 
 ## 方向盘
 
-接上 Thrustmaster T300RS（基座 044f:b66e）就自动接管转向和油门：油门踏板减刹车踏板得到油门量，直接读 HID 报告，不需要官方驱动。250 ms 没有新数据（拔线）时回到窗口滑条，油门照常回零。配置在 `[wheel]`。
+接上 MOZA R5 / R5 Pro（基座 346e:0004）或 Thrustmaster T300RS（基座 044f:b66e）就自动接管转向和油门：油门踏板减刹车踏板得到油门量，直接读 HID 报告。250 ms 没有新数据（拔线）时回到窗口滑条，油门照常回零。两台都插着时用 MOZA。配置在 `[wheel]`。
 
 ```bash
 ./target/release/rc-control --probe-wheel   # 记录方向盘/踏板的 HID 报告，按提示操作，生成 wheel-trace.csv
@@ -137,7 +137,7 @@ src/
   video/decoder.rs  FFmpeg 低延迟解码，转 RGBA
   video/mod.rs      收流线程、统计
   radio/mod.rs      内置图传：网卡选择、启动、断线重连、状态
-  wheel.rs          方向盘：T300RS HID 读取、报告解析、--probe-wheel
+  wheel.rs          方向盘：MOZA R5 / T300RS 的 HID 读取、报告解析、--probe-wheel
 native/             C++ 层：编译 Aviateur 的收包代码，提供 C 接口（rcwfb.h）
 third_party/aviateur  子模块，GPL-3.0
 vendor/             ffmpeg-sys-next 9.0.1 + Windows D3D 空 stub（[patch.crates-io]）

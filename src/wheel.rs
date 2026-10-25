@@ -1,9 +1,11 @@
 //! 方向盘/踏板硬件输入（Windows 直接读裸 HID）。
 //!
-//! Thrustmaster T300RS（基座 VID 044F PID B66E）是 DirectInput/HID 类设备，
-//! 不是 XInput——XInput 只认 Xbox 形状的控制器。所以正确的做法是绕过
-//! DirectInput API，直接用 HID 读输入报告：系统自带的 HID 驱动就够，
-//! 装不装 Thrustmaster 官方驱动都无影响。
+//! 这些基座是 DirectInput/HID 类设备，不是 XInput——XInput 只认 Xbox 形状的
+//! 控制器。所以绕过 DirectInput，直接读 HID 输入报告，用系统自带的 HID 驱动。
+//!
+//! - Thrustmaster T300RS 基座：VID 044F PID B66E，报告 id 07
+//! - MOZA R5 / R5 Pro 基座：VID 346E PID 0004（改款 0014），报告 id 01
+//!   踏板从基座的同一份报告里读（油门 Z、刹车 Rz）
 
 use anyhow::{anyhow, Result};
 use hidapi::HidApi;
@@ -19,6 +21,18 @@ use std::time::{Duration, Instant};
 pub const VID_TM: u16 = 0x044f;
 /// T300RS 基座（方向盘 + 踏板都从基座走线）。
 pub const PID_T300_BASE: u16 = 0xb66e;
+/// Gudsen / MOZA.
+pub const VID_MOZA: u16 = 0x346e;
+/// R5 与 R5 Pro 基座。0014 是同一基座的改款 PID。
+pub const PID_R5: u16 = 0x0004;
+pub const PID_R5_V2: u16 = 0x0014;
+
+/// 哪一种基座。决定输入报告怎么解析。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WheelKind {
+    T300,
+    MozaR5,
+}
 
 /// HID 输入报告一次读这么大就足够方向盘用。
 pub const REPORT_BUF: usize = 128;
@@ -44,12 +58,31 @@ impl DeviceEntry {
     }
 }
 
-/// 列出 Thrustmaster 的所有 HID 条目（包含 FFB/厂商接口；调用者按 usage 挑）。
+/// 这个 HID 条目是不是我们认识的基座，以及是哪一种。
+pub fn kind_of(d: &DeviceEntry) -> Option<WheelKind> {
+    match (d.vendor_id, d.product_id) {
+        (VID_TM, PID_T300_BASE) => Some(WheelKind::T300),
+        (VID_MOZA, PID_R5 | PID_R5_V2) => Some(WheelKind::MozaR5),
+        _ => None,
+    }
+}
+
+/// 游戏摇杆那条接口。MOZA 基座只认 Generic Desktop / Joystick，
+/// 免得打开力反馈或厂商接口。
+fn is_input_iface(d: &DeviceEntry) -> bool {
+    match kind_of(d) {
+        Some(WheelKind::MozaR5) => d.usage_page == 0x01 && d.usage == 0x04,
+        Some(WheelKind::T300) => true,
+        None => false,
+    }
+}
+
+/// 列出已知基座的 HID 条目（包含 FFB/厂商接口；调用者按 usage 挑）。
 pub fn list_devices() -> Result<Vec<DeviceEntry>> {
     let api = HidApi::new()?;
     let mut out = Vec::new();
     for d in api.device_list() {
-        if d.vendor_id() != VID_TM {
+        if d.vendor_id() != VID_TM && d.vendor_id() != VID_MOZA {
             continue;
         }
         out.push(DeviceEntry {
@@ -92,8 +125,21 @@ fn down_ratio(data: &[u8], i: usize) -> f32 {
     1.0 - (u16le(data, i) & 0x03ff) as f32 / 1023.0
 }
 
-/// 从一份输入报告解析轴值。不是 07 报告（FFB 状态、中断帧等）就返回 None。
+/// T300 报告解析。正式路径走 `map_kind`；测试仍用这个入口。
+#[cfg(test)]
 pub fn map_report(data: &[u8]) -> Option<Axes> {
+    map_kind(WheelKind::T300, data)
+}
+
+pub fn map_kind(kind: WheelKind, data: &[u8]) -> Option<Axes> {
+    match kind {
+        WheelKind::T300 => map_t300(data),
+        WheelKind::MozaR5 => map_moza(data),
+    }
+}
+
+/// T300RS 报告 id 07。
+fn map_t300(data: &[u8]) -> Option<Axes> {
     if data.len() < 16 || data[0] != 0x07 {
         return None;
     }
@@ -106,6 +152,33 @@ pub fn map_report(data: &[u8]) -> Option<Axes> {
     })
 }
 
+/// MOZA R5 报告 id 01（本机 R5 Pro 的报告描述符）：
+///   b1..b2  X  转向，无符号 0..65535，中位 0x8000，向右增大
+///   b5..b6  Z  油门，有符号，松开 = -32768，踩下 → +32767
+///   b11..b12 Rz 刹车，刻度与油门相同
+/// 离合器在 Dial（b13..b14），这里不用。
+fn map_moza(data: &[u8]) -> Option<Axes> {
+    if data.len() < 17 || data[0] != 0x01 {
+        return None;
+    }
+    let steering = (u16le(data, 1) as f32 - 32768.0) / 32768.0;
+    let gas = moza_pressed(i16le(data, 5));
+    let brake = moza_pressed(i16le(data, 11));
+    Some(Axes {
+        steering: steering.clamp(-1.0, 1.0),
+        throttle: (gas - brake).clamp(-1.0, 1.0),
+    })
+}
+
+fn i16le(data: &[u8], i: usize) -> i16 {
+    i16::from_le_bytes([data[i], data[i + 1]])
+}
+
+/// 松开 = -32768、踩下 = +32767 的轴 -> 踩下比例 0..=1。
+fn moza_pressed(v: i16) -> f32 {
+    (v as f32 + 32768.0) / 65535.0
+}
+
 /// GUI 用：后台滚动读 T300RS 并持续维护最新的解析值。
 pub struct Live {
     latest: Arc<Mutex<Option<(Axes, Instant)>>>,
@@ -114,12 +187,16 @@ pub struct Live {
 }
 
 impl Live {
-    /// 找 T300RS 基座（B66E）并开始后台读。没有设备或打不开就报错。
+    /// 找基座并开始后台读。优先 MOZA R5，没有再找 T300RS。打不开就报错。
     pub fn start() -> Result<Live> {
-        let dev = list_devices()?
-            .into_iter()
-            .find(|d| d.product_id == PID_T300_BASE)
-            .ok_or_else(|| anyhow!("没找到 Thrustmaster 基座 (044f:b66e)"))?;
+        let devs = list_devices()?;
+        let dev = devs
+            .iter()
+            .find(|d| kind_of(d) == Some(WheelKind::MozaR5) && is_input_iface(d))
+            .or_else(|| devs.iter().find(|d| kind_of(d) == Some(WheelKind::T300) && is_input_iface(d)))
+            .cloned()
+            .ok_or_else(|| anyhow!("没找到方向盘（MOZA R5 346e:0004，或 Thrustmaster 044f:b66e）"))?;
+        let kind = kind_of(&dev).expect("kind checked above");
         let reader = Reader::open(&dev, 0, Arc::new(Mutex::new(HashMap::new())))?;
         let latest = Arc::new(Mutex::new(None));
         let stop = Arc::new(AtomicBool::new(false));
@@ -129,7 +206,7 @@ impl Live {
             .spawn(move || {
                 while !stop2.load(Ordering::Relaxed) {
                     if let Some(r) = reader.slot.lock().unwrap().as_ref() {
-                        if let Some(axes) = map_report(r) {
+                        if let Some(axes) = map_kind(kind, r) {
                             *latest2.lock().unwrap() = Some((axes, Instant::now()));
                         }
                     }
@@ -254,9 +331,9 @@ impl Drop for Reader {
 pub fn probe(seconds: u64) -> Result<()> {
     let devs = list_devices()?;
     if devs.is_empty() {
-        return Err(anyhow!("没找到 Thrustmaster (044f) 的 HID 设备"));
+        return Err(anyhow!("没找到方向盘 HID 设备（MOZA 346e 或 Thrustmaster 044f）"));
     }
-    println!("找到 {} 个 Thrustmaster HID 条目：", devs.len());
+    println!("找到 {} 个方向盘 HID 条目：", devs.len());
     for (i, d) in devs.iter().enumerate() {
         println!("  [{i}] {}", d.label());
     }
@@ -383,5 +460,52 @@ mod tests {
         r[0] = 0x01;
         assert!(map_report(&r).is_none());
         assert!(map_report(&[0x07, 0, 0]).is_none());
+    }
+
+    /// 本机 R5 Pro 静止时抓到的报告：盘略偏右，踏板全松。
+    fn moza_rest() -> Vec<u8> {
+        vec![
+            0x01, 0x6b, 0x81, 0x01, 0x80, 0x00, 0x80, 0x01, 0x80, 0x01, 0x80, 0x00, 0x80, 0x00, 0x80, 0x00, 0x80,
+        ]
+    }
+
+    #[test]
+    fn moza_rest_is_near_centre_with_pedals_up() {
+        let a = map_kind(WheelKind::MozaR5, &moza_rest()).unwrap();
+        assert!((a.steering - (0x816bu16 as f32 - 32768.0) / 32768.0).abs() < 1e-5);
+        assert!(a.steering.abs() < 0.02);
+        assert_eq!(a.throttle, 0.0);
+    }
+
+    #[test]
+    fn moza_full_lock_and_pedals() {
+        let mut r = moza_rest();
+        r[1] = 0x00;
+        r[2] = 0x00;
+        assert_eq!(map_kind(WheelKind::MozaR5, &r).unwrap().steering, -1.0);
+        r[1] = 0xff;
+        r[2] = 0xff;
+        assert!((map_kind(WheelKind::MozaR5, &r).unwrap().steering - 1.0).abs() < 1e-4);
+
+        let mut gas = moza_rest();
+        gas[5] = 0xff;
+        gas[6] = 0x7f;
+        assert_eq!(map_kind(WheelKind::MozaR5, &gas).unwrap().throttle, 1.0);
+        let mut brake = moza_rest();
+        brake[11] = 0xff;
+        brake[12] = 0x7f;
+        assert_eq!(map_kind(WheelKind::MozaR5, &brake).unwrap().throttle, -1.0);
+        let mut both = gas;
+        both[11] = 0xff;
+        both[12] = 0x7f;
+        assert_eq!(map_kind(WheelKind::MozaR5, &both).unwrap().throttle, 0.0);
+    }
+
+    #[test]
+    fn moza_ignores_other_reports() {
+        let mut r = moza_rest();
+        r[0] = 0x02;
+        assert!(map_kind(WheelKind::MozaR5, &r).is_none());
+        assert!(map_kind(WheelKind::MozaR5, &[0x01, 0, 0]).is_none());
     }
 }
