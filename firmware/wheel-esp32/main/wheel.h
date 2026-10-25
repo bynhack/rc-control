@@ -11,8 +11,10 @@
 //   b1..b2   X  u16  steering: 0 .. 65535, centre 0x8000; full lock is the
 //                   rotation angle set in Pit House
 //   b3..b16  Y Z Rx Ry Rz Dial Slider, i16, -32768 released .. 32767
-//            Z (b5) = brake, Rz (b11) = gas with the stock SR-P pedals
-//   b17      hat (low nibble, 8 = centred), then 128 buttons from bit 4
+//            Z (b5) = gas (right pedal), Rz (b11) = brake (left pedal)
+//            with the stock SR-P pedals
+//   b17      hat (low nibble, 8 = centred), then 128 buttons from bit 4:
+//            13 / 14 left / right paddle, 32 P, 36 Start, 19 N, 20 WIP
 #pragma once
 
 #include <stdbool.h>
@@ -28,7 +30,10 @@ typedef struct {
     float gas;      // 0 released .. 1 floored
     float brake;    // 0 released .. 1 floored
     float throttle; // gas - brake, -1 .. +1
+    uint64_t buttons; // bit n-1 = button n pressed (MOZA only so far)
 } wheel_axes_t;
+
+#define WHEEL_BUTTON(n) (1ull << ((n) - 1))
 
 // True when this VID:PID has a known layout.
 bool wheel_known(uint16_t vid, uint16_t pid);

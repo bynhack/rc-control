@@ -2,6 +2,7 @@
 
 #include <math.h>
 #include <stdio.h>
+#include <string.h>
 
 #include "driver/spi_master.h"
 #include "esp_lcd_gc9a01.h"
@@ -9,6 +10,7 @@
 #include "esp_lcd_panel_ops.h"
 #include "esp_log.h"
 #include "esp_lvgl_port.h"
+#include "wheel.h"
 
 static const char *TAG = "display";
 
@@ -33,6 +35,7 @@ static const char *TAG = "display";
 #define COL_STEER 0xa78bfa
 #define COL_OK 0x34d399
 #define COL_WARN 0xf59e0b
+#define COL_STOP 0xef4444
 
 static lv_obj_t *s_throttle_arc;
 static lv_obj_t *s_steer_arc;
@@ -40,6 +43,7 @@ static lv_obj_t *s_value;
 static lv_obj_t *s_caption;
 static lv_obj_t *s_status;
 static lv_obj_t *s_detail;
+static lv_obj_t *s_button;
 
 static lv_obj_t *make_arc(lv_obj_t *parent, int size, int width, int start, int end, uint32_t track) {
     lv_obj_t *arc = lv_arc_create(parent);
@@ -80,11 +84,11 @@ static void build_ui(void) {
     s_steer_arc = make_arc(scr, 196, 6, 210, 330, COL_TRACK);
     lv_obj_set_style_arc_color(s_steer_arc, lv_color_hex(COL_STEER), LV_PART_INDICATOR);
 
-    s_status = make_label(scr, &lv_font_montserrat_14, COL_DIM, -52);
-    s_value = make_label(scr, &lv_font_montserrat_48, COL_TEXT, 0);
-    s_caption = make_label(scr, &lv_font_montserrat_14, COL_DIM, 34);
-    s_detail = make_label(scr, &lv_font_montserrat_20, COL_DIM, 72);
-    lv_label_set_text(s_caption, "THROTTLE %");
+    s_status = make_label(scr, &lv_font_montserrat_20, COL_DIM, -50);
+    s_value = make_label(scr, &lv_font_montserrat_48, COL_TEXT, -2);
+    s_caption = make_label(scr, &lv_font_montserrat_14, COL_DIM, 32);
+    s_button = make_label(scr, &lv_font_montserrat_14, COL_STEER, 52);
+    s_detail = make_label(scr, &lv_font_montserrat_14, COL_DIM, 78);
 }
 
 void display_init(void) {
@@ -134,44 +138,70 @@ void display_init(void) {
     ESP_LOGI(TAG, "GC9A01 up");
 }
 
+static void set_label(lv_obj_t *l, const char *text, uint32_t color) {
+    lv_label_set_text(l, text);
+    lv_obj_set_style_text_color(l, lv_color_hex(color), 0);
+}
+
+static const char *speed_name(speed_t s) {
+    return s == SPEED_HIGH ? "SPEED  H" : (s == SPEED_MID ? "SPEED  M" : "SPEED  L");
+}
+
 void display_show(const display_state_t *s) {
     if (s_value == NULL || !lvgl_port_lock(50)) {
         return;
     }
     char buf[32];
-    if (s->wheel) {
-        int thr = (int)lroundf(s->axes.throttle * 100.0f);
-        int steer = (int)lroundf(s->axes.steering * 100.0f);
-        lv_arc_set_value(s_throttle_arc, thr);
-        lv_obj_set_style_arc_color(s_throttle_arc, lv_color_hex(thr >= 0 ? COL_FWD : COL_REV), LV_PART_INDICATOR);
-        lv_arc_set_value(s_steer_arc, steer);
+    const control_view_t *c = &s->ctl;
 
-        snprintf(buf, sizeof(buf), "%+d", thr);
-        lv_label_set_text(s_value, thr == 0 ? "0" : buf);
-        lv_obj_set_style_text_color(s_value, lv_color_hex(COL_TEXT), 0);
-        const char *name = wheel_name(s->vid, s->pid);
-        snprintf(buf, sizeof(buf), "%s OK", name ? name : "WHEEL");
-        lv_label_set_text(s_status, buf);
-        lv_obj_set_style_text_color(s_status, lv_color_hex(COL_OK), 0);
-        snprintf(buf, sizeof(buf), "STEER %+d", steer);
-        lv_label_set_text(s_detail, buf);
-    } else {
-        lv_arc_set_value(s_throttle_arc, 0);
-        lv_arc_set_value(s_steer_arc, 0);
-        lv_label_set_text(s_value, "--");
-        lv_obj_set_style_text_color(s_value, lv_color_hex(COL_DIM), 0);
-        if (s->vid != 0) {
-            // Attached, but not a layout we can parse yet.
+    // Top line: what the car will do.
+    if (!s->wheel) {
+        if (s->vid != 0 && !wheel_known(s->vid, s->pid)) {
             snprintf(buf, sizeof(buf), "%04X:%04X", s->vid, s->pid);
-            lv_label_set_text(s_status, buf);
-            lv_obj_set_style_text_color(s_status, lv_color_hex(COL_STEER), 0);
-            snprintf(buf, sizeof(buf), "%.0f rpt/s", (double)s->rate);
-            lv_label_set_text(s_detail, buf);
+            set_label(s_status, buf, COL_STEER);
         } else {
-            lv_label_set_text(s_status, "NO WHEEL");
-            lv_obj_set_style_text_color(s_status, lv_color_hex(COL_WARN), 0);
-            lv_label_set_text(s_detail, "plug into OTG");
+            set_label(s_status, "NO WHEEL", COL_WARN);
         }
+    } else if (c->armed) {
+        set_label(s_status, "ARMED", COL_OK);
+    } else if (strcmp(c->disarm_reason, "E-STOP") == 0) {
+        set_label(s_status, "E-STOP", COL_STOP);
+    } else {
+        set_label(s_status, "SAFE", COL_WARN);
+    }
+
+    // Ring and number: the throttle actually sent when armed, else the
+    // pedal demand, dimmed, so the pedals can still be checked.
+    float thr = c->armed ? c->output.throttle : c->throttle_demand;
+    int pct = (int)lroundf(thr * 100.0f);
+    uint32_t ring = !c->armed ? COL_DIM : (pct >= 0 ? COL_FWD : COL_REV);
+    lv_arc_set_value(s_throttle_arc, s->wheel ? pct : 0);
+    lv_obj_set_style_arc_color(s_throttle_arc, lv_color_hex(ring), LV_PART_INDICATOR);
+    lv_arc_set_value(s_steer_arc, s->wheel ? (int)lroundf(c->steering * 100.0f) : 0);
+    if (s->wheel) {
+        snprintf(buf, sizeof(buf), "%+d", pct);
+        set_label(s_value, pct == 0 ? "0" : buf, c->armed ? COL_TEXT : COL_DIM);
+    } else {
+        set_label(s_value, "--", COL_DIM);
+    }
+
+    set_label(s_caption, speed_name(c->speed), COL_DIM);
+
+    if (s->button) {
+        snprintf(buf, sizeof(buf), "BTN %d", s->button);
+        set_label(s_button, buf, COL_STEER);
+    } else {
+        lv_label_set_text(s_button, "");
+    }
+
+    // Bottom line: the radio.
+    if (s->radio.link) {
+        snprintf(buf, sizeof(buf), "%d dBm  LQ %d", s->radio.rssi, s->radio.lq);
+        set_label(s_detail, buf, COL_OK);
+    } else if (s->radio.module) {
+        set_label(s_detail, "TX ONLY", COL_WARN);
+    } else {
+        set_label(s_detail, "NO TX", COL_STOP);
     }
     lvgl_port_unlock();
 }

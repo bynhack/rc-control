@@ -8,8 +8,10 @@
 #define MOZA_REPORT_ID 0x01
 #define MOZA_REPORT_MIN_LEN 13
 #define MOZA_OFF_STEER 1
-#define MOZA_OFF_BRAKE 5
-#define MOZA_OFF_GAS 11
+#define MOZA_OFF_GAS 5
+#define MOZA_OFF_BRAKE 11
+// Buttons start at bit 4 of byte 17, after the hat switch nibble.
+#define MOZA_BUTTON_BIT0 (17 * 8 + 4)
 
 static inline uint16_t u16le(const uint8_t *d, size_t i) {
     return (uint16_t)(d[i] | (d[i + 1] << 8));
@@ -36,6 +38,7 @@ static bool t300_parse(const uint8_t *data, size_t len, wheel_axes_t *out) {
     out->steering = clampf(((float)u16le(data, 1) - (float)0x8000) / T300_STEER_HALF, -1.0f, 1.0f);
     out->brake = t300_pressed(data, 3);
     out->gas = t300_pressed(data, 5);
+    out->buttons = 0;
     return true;
 }
 
@@ -46,6 +49,13 @@ static bool moza_parse(const uint8_t *data, size_t len, wheel_axes_t *out) {
     out->steering = clampf(((float)u16le(data, MOZA_OFF_STEER) - 32768.0f) / 32768.0f, -1.0f, 1.0f);
     out->brake = moza_pressed(data, MOZA_OFF_BRAKE);
     out->gas = moza_pressed(data, MOZA_OFF_GAS);
+    out->buttons = 0;
+    for (int k = 0; k < 64; k++) {
+        size_t bit = MOZA_BUTTON_BIT0 + k;
+        if (bit / 8 < len && (data[bit / 8] >> (bit % 8)) & 1) {
+            out->buttons |= 1ull << k;
+        }
+    }
     return true;
 }
 

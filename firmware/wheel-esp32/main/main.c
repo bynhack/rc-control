@@ -1,14 +1,18 @@
-// Step 1 of the standalone wheel controller: prove a wheel base can be read
-// over the ESP32-S3's USB OTG port in host mode. Known bases (wheel.h: T300RS,
-// MOZA R5) are parsed; any other HID device has its report descriptor and
-// changing raw reports dumped so its layout can be worked out.
+// Standalone wheel controller: wheel base over USB host in, CRSF to an ELRS
+// TX module out, no PC. Known bases (wheel.h: T300RS, MOZA R5) are parsed;
+// any other HID device has its report descriptor and changing raw reports
+// dumped so its layout can be worked out.
 //
-// Wiring for this step:
+// Wiring:
 //   ESP32-OTG port  <- wheel base (via OTG adapter; the port must supply 5 V)
-//   USB-UART port   -> computer, for flashing and this log (CH340C, UART0)
+//   GPIO17          -> ELRS TX module CRSF pin (crsf.h)
+//   GPIO8..12       -> round status screen (display.h)
+//   UART0 (TX0)     -> log, 115200; CH340C port or a 3.3 V-safe USB-TTL
 //
-// Prints the first raw reports in hex, then parsed axes at 10 Hz, and
-// shows them on the round screen (display.h). Nothing is transmitted yet.
+// Wheel buttons (MOZA R5 numbering, read off the log):
+//   Start (36)          arm / disarm (arming needs the pedals released)
+//   right / left paddle speed tier up / down (14 / 13)
+//   P (32)              emergency stop
 
 #include <stdio.h>
 #include <string.h>
@@ -21,6 +25,8 @@
 #include "usb/hid_host.h"
 #include "usb/usb_host.h"
 
+#include "control.h"
+#include "crsf.h"
 #include "display.h"
 #include "wheel.h"
 
@@ -34,6 +40,15 @@ static const char *TAG = "wheel";
 #define PRINT_EVERY 3
 // A report this stale means the wheel is gone or stuck.
 #define STALE_MS 250
+// No wheel input for this long: outputs go neutral and the car disarms.
+#define HEARTBEAT_TIMEOUT_MS 300
+// Shows the last pressed button number on screen this long, for mapping.
+#define BUTTON_SHOW_MS 2000
+
+#define BTN_ARM 36
+#define BTN_SPEED_UP 14
+#define BTN_SPEED_DOWN 13
+#define BTN_ESTOP 32
 
 typedef struct {
     hid_host_device_handle_t handle;
@@ -47,8 +62,53 @@ static portMUX_TYPE s_lock = portMUX_INITIALIZER_UNLOCKED;
 static wheel_axes_t s_axes;
 static int64_t s_axes_at_us = -1;
 static uint32_t s_reports;
-static uint32_t s_other_reports;
 static uint16_t s_vid, s_pid; // 0 while nothing is attached
+static int s_last_button;
+static int64_t s_last_button_at_us;
+
+static const char *speed_name(speed_t s) {
+    return s == SPEED_HIGH ? "H" : (s == SPEED_MID ? "M" : "L");
+}
+
+// Button actions fire on the press edge.
+static void handle_buttons(uint64_t now_b, int64_t now_us) {
+    static uint64_t prev;
+    uint64_t pressed = now_b & ~prev;
+    prev = now_b;
+    if (!pressed) {
+        return;
+    }
+
+    int n = __builtin_ctzll(pressed) + 1;
+    portENTER_CRITICAL(&s_lock);
+    s_last_button = n;
+    s_last_button_at_us = now_us;
+    portEXIT_CRITICAL(&s_lock);
+    ESP_LOGI(TAG, "button %d", n);
+
+    if (pressed & WHEEL_BUTTON(BTN_ESTOP)) {
+        control_estop();
+        ESP_LOGW(TAG, "E-STOP");
+        return;
+    }
+    if (pressed & WHEEL_BUTTON(BTN_ARM)) {
+        if (control_view(now_us).armed) {
+            control_disarm("DISARMED");
+            ESP_LOGI(TAG, "disarmed");
+        } else {
+            const char *why = control_arm(now_us);
+            ESP_LOGI(TAG, "arm: %s", why ? why : "ARMED");
+        }
+    }
+    speed_t sp = control_speed();
+    if ((pressed & WHEEL_BUTTON(BTN_SPEED_UP)) && sp < SPEED_HIGH) {
+        control_set_speed(sp + 1);
+        ESP_LOGI(TAG, "speed %s", speed_name(sp + 1));
+    } else if ((pressed & WHEEL_BUTTON(BTN_SPEED_DOWN)) && sp > SPEED_LOW) {
+        control_set_speed(sp - 1);
+        ESP_LOGI(TAG, "speed %s", speed_name(sp - 1));
+    }
+}
 
 static void dump_hex(const char *label, const uint8_t *d, size_t n) {
     char line[3 * 64 + 1];
@@ -87,15 +147,18 @@ static void interface_callback(hid_host_device_handle_t handle, const hid_host_i
             wheel_axes_t axes;
             bool ok = wheel_parse(s_vid, s_pid, data, len, &axes);
             uint32_t n;
+            int64_t now = esp_timer_get_time();
             portENTER_CRITICAL(&s_lock);
             n = ++s_reports;
             if (ok) {
                 s_axes = axes;
-                s_axes_at_us = esp_timer_get_time();
-            } else {
-                s_other_reports++;
+                s_axes_at_us = now;
             }
             portEXIT_CRITICAL(&s_lock);
+            if (ok) {
+                control_input(axes.steering, axes.throttle, now);
+                handle_buttons(axes.buttons, now);
+            }
             if (n <= RAW_REPORTS_TO_DUMP) {
                 dump_hex(ok ? "report" : "report (unparsed)", data, len);
             } else if (!ok) {
@@ -176,20 +239,31 @@ static void ui_task(void *arg) {
         vTaskDelay(pdMS_TO_TICKS(UI_PERIOD_MS));
         wheel_axes_t a;
         int64_t at;
-        uint32_t reports, others;
+        uint32_t reports;
         uint16_t vid, pid;
+        int button;
+        int64_t button_at;
         portENTER_CRITICAL(&s_lock);
         vid = s_vid;
         pid = s_pid;
+        button = s_last_button;
+        button_at = s_last_button_at_us;
         a = s_axes;
         at = s_axes_at_us;
         reports = s_reports;
-        others = s_other_reports;
         portEXIT_CRITICAL(&s_lock);
 
         int64_t now = esp_timer_get_time();
         bool fresh = at >= 0 && (now - at) <= (int64_t)STALE_MS * 1000;
-        const display_state_t ds = {.wheel = fresh, .axes = a, .rate = rate, .vid = vid, .pid = pid};
+        const display_state_t ds = {
+            .wheel = fresh,
+            .vid = vid,
+            .pid = pid,
+            .rate = rate,
+            .ctl = control_view(now),
+            .radio = crsf_status(),
+            .button = (button && now - button_at < (int64_t)BUTTON_SHOW_MS * 1000) ? button : 0,
+        };
         display_show(&ds);
 
         if (tick % PRINT_EVERY != 0) {
@@ -201,14 +275,20 @@ static void ui_task(void *arg) {
         if (at < 0) {
             continue; // nothing parsed yet
         }
-        printf("steer %+5.2f  gas %4.2f  brake %4.2f  throttle %+5.2f  | %4.0f reports/s  other %lu%s\n",
-               a.steering, a.gas, a.brake, a.throttle, rate, (unsigned long)others, fresh ? "" : "  STALE");
+        control_view_t c = ds.ctl;
+        crsf_status_t r = ds.radio;
+        printf("steer %+5.2f  gas %4.2f  brake %4.2f  | %s %s  out %+5.2f %+5.2f  | %s rssi %d lq %d  | %4.0f rpt/s%s\n",
+               a.steering, a.gas, a.brake, c.armed ? "ARMED" : "SAFE ", speed_name(c.speed), c.output.steering,
+               c.output.throttle, r.link ? "LINK" : (r.module ? "TX  " : "NOTX"), r.rssi, r.lq, rate,
+               fresh ? "" : "  STALE");
     }
 }
 
 void app_main(void) {
     ESP_LOGI(TAG, "wheel USB host test: plug the wheel base into the ESP32-OTG port");
     s_device_events = xQueueCreate(8, sizeof(device_event_t));
+    control_init((int64_t)HEARTBEAT_TIMEOUT_MS * 1000);
+    crsf_start();
     display_init();
 
     xTaskCreatePinnedToCore(usb_lib_task, "usb_lib", 4096, xTaskGetCurrentTaskHandle(), 2, NULL, 0);

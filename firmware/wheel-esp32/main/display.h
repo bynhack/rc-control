@@ -9,13 +9,16 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "wheel.h"
+#include "control.h"
+#include "crsf.h"
 
 typedef struct {
-    bool wheel;       // a parsed wheel report arrived recently
-    wheel_axes_t axes; // valid when wheel is true
-    float rate;       // reports per second
+    bool wheel;        // a parsed wheel report arrived recently
     uint16_t vid, pid; // attached HID device, 0 when none
+    float rate;        // reports per second
+    control_view_t ctl;
+    crsf_status_t radio;
+    int button; // last pressed button number while it is shown, else 0
 } display_state_t;
 
 void display_init(void);
