@@ -11,7 +11,7 @@ if (-not (Test-Path $Exe)) { Write-Error "找不到 $Exe，先 cargo build"; exi
 $dest = Split-Path (Resolve-Path $Exe)
 if (-not (Test-Path "$MsysBin\gcc.exe")) { Write-Error "MSYS2 不在 C:\msys64"; exit 1 }
 
-$frontier = @("avcodec-63.dll", "avutil-61.dll", "swscale-10.dll", "libsodium-26.dll", "libusb-1.0.dll")
+$frontier = @("avcodec-63.dll", "avformat-63.dll", "avutil-61.dll", "swscale-10.dll", "libsodium-26.dll", "libusb-1.0.dll")
 $done = @{}
 
 while ($frontier.Count -gt 0) {

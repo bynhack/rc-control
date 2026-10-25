@@ -57,6 +57,19 @@ patch_staged(${STAGE}/wifi/compat/getopt.h
         "#else\nchar *optarg __attribute__((weak)) = nullptr;\nint optind __attribute__((weak)) = 1, opterr __attribute__((weak)) = 1, optopt __attribute__((weak)) = 0;\n#endif"
         "#endif"
         "MinGW getopt globals")
+# net_compat.h blanks __attribute__ on Windows, which drops packed from the
+# wfb-ng headers. The stand-in header only restored 1-byte alignment for
+# MSVC (_MSC_VER). MinGW then inserts padding (wblock_hdr_t is 16 bytes
+# instead of 9), so every frame fails with "Unable to decrypt packet" /
+# "Invalid session key packet". #pragma pack works on GCC.
+patch_staged(${STAGE}/wifi/wfb-ng/wifibroadcast.hpp
+        "#ifdef _MSC_VER\n#pragma pack(push, 1)\n#endif"
+        "#if defined(_WIN32)\n#pragma pack(push, 1)\n#endif"
+        "pack wfb headers on MinGW")
+patch_staged(${STAGE}/wifi/wfb-ng/wifibroadcast.hpp
+        "#ifdef _MSC_VER\n#pragma pack(pop)\n#endif"
+        "#if defined(_WIN32)\n#pragma pack(pop)\n#endif"
+        "pack wfb headers on MinGW (end)")
 
 # Upstream fix: TxFrame::run never closes its uplink socket (UDP 8001), so
 # starting the link again in the same process fails to bind and the uncaught
