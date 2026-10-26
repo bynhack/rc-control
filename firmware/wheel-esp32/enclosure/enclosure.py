@@ -42,9 +42,14 @@ BOARD_LIFT = 12.0  # board underside above the plate: room for header pins + Dup
 USB_STACK = 3.2  # USB-C receptacle height above the PCB
 
 # ---- GC9A01 round screen ----------------------------------------------------
-GLASS_W, GLASS_H = 35.6, 38.1  # given panel outline (H along y)
+# Module with the round PCB and the 7-pin header on the side. The panel is a
+# 35.6 circle plus the FPC bump that makes it 38.1 the other way; the display
+# area is centred on the circle, not on the 35.6 x 38.1 outline. Header tab
+# points left (-x), FPC bump towards the front (-y).
+GLASS_D, GLASS_H = 35.6, 38.1  # given panel outline
+GLASS_BUMP_W = 20.0  # FPC bump width, generous: only the circle locates the glass
 VIEW_D = 32.4  # given display area
-SCREEN_C = (W / 2, 24.0)  # centre on the top face
+SCREEN_C = (W / 2, 24.0)  # display-area centre on the top face
 
 # ---- USB-A female breakout for the wheel (MEASURE your breakout) ----------
 USBA_HOLE = (13.6, 6.2)  # receptacle opening, width x height
@@ -120,8 +125,10 @@ def body():
     sx, sy = SCREEN_C
     cut += cyl(sx, sy, ZT - TOP - 1, ZT + 1, VIEW_D / 2 + 0.2)
     cut += cyl(sx, sy, ZT - 0.8, ZT + 0.01, VIEW_D / 2 + 0.2, VIEW_D / 2 + 1.0)
-    gw, gh = GLASS_W + 2 * 0.3, GLASS_H + 2 * 0.3
-    cut += rbox(sx - gw / 2, sy - gh / 2, ZT - TOP - 1, gw, gh, 1 + TOP / 2, 10.0)
+    pocket_z0, pocket_h = ZT - TOP - 1, 1 + TOP / 2
+    cut += cyl(sx, sy, pocket_z0, pocket_z0 + pocket_h, GLASS_D / 2 + 0.3)
+    bump_y0 = sy + GLASS_D / 2 - GLASS_H - 0.3
+    cut += box(sx - GLASS_BUMP_W / 2, bump_y0, pocket_z0, sx + GLASS_BUMP_W / 2, sy, pocket_z0 + pocket_h)
 
     # USB-C ports (CH340C and OTG) through the left wall.
     uz = board_z0 + BOARD_T + USB_STACK / 2
@@ -184,7 +191,7 @@ def ghosts():
     g.append(box(board_x0, board_y0, board_z0, board_x0 + BOARD_L, board_y1, board_z0 + BOARD_T))
     g.append(box(board_x0 + 30, board_y0 + 4, board_z0 + BOARD_T, board_x0 + 48, board_y1 - 4, board_z0 + BOARD_T + 3.2))
     sx, sy = SCREEN_C
-    g.append(cyl(sx, sy, ZT - TOP / 2 - 3.2, ZT - TOP / 2, GLASS_W / 2))
+    g.append(cyl(sx, sy, ZT - TOP / 2 - 3.2, ZT - TOP / 2, GLASS_D / 2))
     mz0 = PLATE
     g.append(box(W / 2 - 22.5, D + FIT, mz0, W / 2 + 22.5, D + FIT + MOD_T, mz0 + 60))
     g.append(cyl(W / 2, D + FIT + MOD_T / 2, mz0 + 60, mz0 + 75, 3.2))
