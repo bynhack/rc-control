@@ -52,7 +52,7 @@ USBA_C = (20.0, PLATE + 9.0)  # y, z of the opening centre on the right wall
 
 # ---- BETAFPV ELRS 2.4GHz 1W Micro module (given: 45 body, 53 rails, 60/64 tall)
 MOD_W_RAILS = 53.0
-MOD_T = 24.0  # MEASURE: module thickness, back face (pins) to front face
+MOD_T = 20.0  # measured: module thickness, back face (pins) to front face
 BAY_WALL = 3.0
 BAY_LIP_H = 14.0  # front lip height; the face (screen, fan, joystick) stays clear
 PIN_SLOT = (42.0, 24.0)  # opening in the rear wall for the module's pin wires
