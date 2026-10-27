@@ -122,7 +122,7 @@
   <aside>
     <header>
       <h1>外殼組裝模擬</h1>
-      <p class="lede">v2 外殼：高頻頭從後面插進 45 × 60 的模組倉，圓屏和 MB102 電源用 3M 膠固定。載入要列印的外殼和零件示意模型，用精確的幾何布林運算算出每兩個零件的重疊體積，紅色就是會頂到的地方。</p>
+      <p class="lede">v2 外殼：高頻頭從後面插進 45 × 60 的模組倉；圓屏背面用 3M 膠貼在底板的立柱上，玻璃從頂面的開孔露出；MB102 電源用 3M 膠貼在墊台上。載入要列印的外殼和零件示意模型，用精確的幾何布林運算算出每兩個零件的重疊體積，紅色就是會頂到的地方。</p>
     </header>
 
     <section>
@@ -184,6 +184,7 @@ const PARTS = {
   screen: { color: 0x2b3f57, move: [0, 0, 90] },
   plate:  { color: 0x7d8792, move: [0, 0, -30] },
   board:  { color: 0x24907f, move: [0, 0, -14] },
+  dupont: { color: 0xe0a526, move: [0, 0, -14] },
   plug:   { color: 0x59616d, move: [0, -34, -14] },
   power:  { color: 0x3f7fd0, move: [0, 0, -14] },
   dcplug: { color: 0x59616d, move: [34, 0, -14] },

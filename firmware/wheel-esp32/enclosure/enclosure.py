@@ -1,18 +1,21 @@
 """3D-printable case for the current wheel controller, v2.
 
 Holds:
-  - ESP32-S3-N16R8 devboard, USB-C to the front for flashing
-  - 1.28" GC9A01 round screen in the top, stuck on with 3M foam tape
+  - ESP32-S3-N16R8 devboard on a tall cradle (room for Dupont plugs under
+    it), CH340C USB-C through the front for flashing and logs
+  - 1.28" GC9A01 round screen: its back is stuck with 3M foam tape onto a
+    post on the plate, the glass shows through a glass-shaped opening
   - BETAFPV ELRS 2.4GHz 1W Micro module in a radio-style bay at the back:
     45 x 60 opening plus channels for the side latches; it slides in back
     first, antenna up, with the fan / OLED / XT30 / USB-C face left exposed
-  - MB102 breadboard power module on a pedestal (3M tape), DC jack and
-    mini-USB through the right wall
+  - MB102 breadboard power module on a pedestal (3M tape), DC jack through
+    the right wall
   - USB-A female breakout for the wheel on the left wall
 
 Two parts, both print without supports:
   body.stl   top face on the bed (exported already turned over)
-  plate.stl  flat; bottom plate with the board cradle and power pedestal
+  plate.stl  flat; bottom plate with the board cradle, screen post and
+             power pedestal
 
 Assembly coordinates: x = width (left -> right), y = depth (front -> back),
 z = up. The plate is z 0..PLATE, the body sits on it.
@@ -44,20 +47,29 @@ R = 4.0  # vertical corner radius
 
 # ---- ESP32-S3-N16R8 devboard (given: 27.8 x 59.6), long axis front-to-back --
 BOARD_L, BOARD_W, BOARD_T = 59.6, 27.8, 1.6
-BOARD_LIFT = 12.0  # board underside above the plate: header pins + Dupont
+# Board underside above the plate: header spacer 2.5 + Dupont housing 14 +
+# room for the wires to bend.
+BOARD_LIFT = 24.0
 USB_STACK = 3.2  # USB-C receptacle height above the PCB
 HEADER_KEEPOUT = 3.5  # header row width from each long edge, spacer included
 BOARD_X0 = 11.0  # clear of the front-left screw column
+# Only the CH340C port is used (the wheel goes through the USB-A breakout on
+# GPIO19/20, the same lines as the OTG port). Seen from above with the USB
+# end at the front: OTG on the left, CH340C on the right.
+CH340_DX = 5.7  # MEASURE: CH340C port centre from the board's centre line
+USBC_HOLE = (14.0, 8.5)
 
 # ---- GC9A01 round screen, 3M foam tape -------------------------------------
 # Panel: 35.6 circle; the FPC folds over on the header side, making it 38.1
-# that way. Display area 32.4, centred on the circle. The module's round PCB
-# is larger than the glass, so the PCB rim and header tab are taped to the
-# inside of the top and the glass sits in a shallow recess.
+# that way (a flat side). The top has a glass-shaped opening; the module's
+# back is taped onto a post on the plate, which holds its PCB just under the
+# top so the glass sits in the opening.
 GLASS_D, GLASS_SPAN, GLASS_T = 35.6, 38.1, 1.5  # given panel outline
-VIEW_D = 32.4  # given display area
-TAPE_T = 1.0  # MEASURE: 3M foam tape thickness
-SCREEN_C = (W / 2, 30.0)  # display centre on the top face; header tab towards -x
+GLASS_FOLD_W = 24.0  # MEASURE: width of the flat FPC side
+SCREEN_PCB_T = 1.6
+TAPE_T = 1.0  # 3M foam tape thickness
+SCREEN_GAP = 0.5  # PCB top below the underside of the top
+SCREEN_C = (W / 2, 30.0)  # glass centre on the top face; header tab towards -x
 
 # ---- BETAFPV 1W Micro module (given: 45 x 60 body, 53 over the latches, 20 thick)
 MOD_W, MOD_H, MOD_T = 45.0, 60.0, 20.0
@@ -77,12 +89,11 @@ PWR_JACK_OUT = 4.0  # DC jack nose past the PCB edge
 PWR_LIFT = 10.0  # clears the breadboard pins under both ends
 PWR_Y0 = 11.0
 PWR_USB_Y, PWR_JACK_Y = 7.0, 46.0  # MEASURE: centres along the edge from the front end
-DC_HOLE = (12.0, 12.0)
-MINIUSB_HOLE = (12.0, 9.0)
+DC_HOLE = (12.0, 12.0)  # the mini-USB input stays inside (DC only)
 
 # ---- USB-A female breakout for the wheel (MEASURE your breakout) ----------
 USBA_HOLE = (13.6, 6.2)  # width x height
-USBA_C = (40.0, PLATE + 28.0)  # y, z of the opening centre on the left wall
+USBA_C = (66.0, PLATE + 37.0)  # y, z on the left wall: behind the screen, above the board
 
 # ---- screws (M3 self-tapping, plate -> body) --------------------------------
 BOSS_R, PILOT_R, CLEAR_R, HEAD_R = 3.5, 1.3, 1.7, 3.0
@@ -118,7 +129,7 @@ ZT = PLATE + H  # body top
 CX = W / 2
 
 board_x0, board_x1 = BOARD_X0, BOARD_X0 + BOARD_W
-board_y0 = WALL + FIT  # USB end against the front wall
+board_y0 = WALL + FIT + 0.5  # the USB-C receptacles stand 0.5 proud of the board edge
 board_y1 = board_y0 + BOARD_L
 board_z0 = Z0 + BOARD_LIFT
 board_cx = (board_x0 + board_x1) / 2
@@ -135,6 +146,9 @@ latch_z1 = Z0 + LATCH_Z[1] + 1.5
 # Seen from inside the case the module's back socket is on the -x side (the
 # product photo is taken from behind the module).
 socket_x = (CX - MOD_W / 2 + SOCKET_X[0], CX - MOD_W / 2 + SOCKET_X[1])
+
+screen_pcb_top = ZT - TOP - SCREEN_GAP
+screen_post_top = screen_pcb_top - SCREEN_PCB_T - TAPE_T
 
 pwr_x1 = W - WALL - 0.5 - PWR_JACK_OUT  # jack edge towards the right wall
 pwr_x0 = pwr_x1 - PWR_W
@@ -176,25 +190,26 @@ def body():
     # module's back socket; open at the bottom so it prints without a bridge.
     cut += box(socket_x[0] - 4.0, bay_y0 - BAY_WALL - 1, Z0 - 1, socket_x[1] + 4.0, bay_y0 + 1, Z0 + SOCKET_Z[1] + 3.0)
 
-    # Screen: viewing window with an outward chamfer, then a shallow recess
-    # for the glass (circle plus the FPC fold on the header side).
+    # Screen: an opening the shape of the glass (circle plus the flat FPC
+    # side towards the header), with a small chamfer on the outside.
     sx, sy = SCREEN_C
-    recess = max(GLASS_T - TAPE_T, 0.3)
-    cut += cyl(sx, sy, ZT - TOP - 1, ZT + 1, VIEW_D / 2 + 0.2)
-    cut += cyl(sx, sy, ZT - 0.8, ZT + 0.01, VIEW_D / 2 + 0.2, VIEW_D / 2 + 1.0)
-    cut += cyl(sx, sy, ZT - TOP - 1, ZT - TOP + recess, GLASS_D / 2 + 0.3)
-    fold_x = sx + GLASS_D / 2 - GLASS_SPAN - 0.3
-    cut += box(fold_x, sy - 15, ZT - TOP - 1, sx, sy + 15, ZT - TOP + recess)
+    g = 0.3
+    fold_x = sx + GLASS_D / 2 - GLASS_SPAN
+    for dz, grow in ((0.0, 0.0), (0.6, 0.6)):
+        z0_ = ZT - 0.6 if dz else ZT - TOP - 1
+        cut += cyl(sx, sy, z0_, ZT + 1, GLASS_D / 2 + g + grow)
+        cut += box(fold_x - g - grow, sy - GLASS_FOLD_W / 2 - g - grow, z0_, sx, sy + GLASS_FOLD_W / 2 + g + grow, ZT + 1)
 
-    # ESP32 USB-C ports through the front wall.
+    # ESP32 CH340C USB-C through the front wall.
     uz = board_z0 + BOARD_T + USB_STACK / 2
-    cut += box(board_cx - (BOARD_W - 1) / 2, -1, uz - 4.25, board_cx + (BOARD_W - 1) / 2, WALL + 1, uz + 4.25)
+    ux = board_cx + CH340_DX
+    hw, hh = USBC_HOLE
+    cut += box(ux - hw / 2, -1, uz - hh / 2, ux + hw / 2, WALL + 1, uz + hh / 2)
 
-    # Power module: DC jack and mini-USB through the right wall.
+    # Power module: DC jack through the right wall.
     jz = pwr_z0 + PWR_T + 5.5
-    uzz = pwr_z0 + PWR_T + 2.0
-    for yc, (hw, hh), zc in ((pwr_y0 + PWR_JACK_Y, DC_HOLE, jz), (pwr_y0 + PWR_USB_Y, MINIUSB_HOLE, uzz)):
-        cut += box(W - WALL - 1, yc - hw / 2, zc - hh / 2, W + 1, yc + hw / 2, zc + hh / 2)
+    jy = pwr_y0 + PWR_JACK_Y
+    cut += box(W - WALL - 1, jy - DC_HOLE[0] / 2, jz - DC_HOLE[1] / 2, W + 1, jy + DC_HOLE[0] / 2, jz + DC_HOLE[1] / 2)
 
     # USB-A for the wheel through the left wall.
     uw, uh = USBA_HOLE
@@ -216,7 +231,7 @@ def plate():
     # corners, so the board rests on ledges under the middle of its short
     # edges; walls outside the long edges locate it.
     ledge_top = board_z0
-    for y0, y1 in ((board_y0, board_y0 + 2.5), (board_y1 - 2.5, board_y1)):
+    for y0, y1 in ((board_y0, board_y0 + 4.0), (board_y1 - 4.0, board_y1)):
         out += box(board_x0 + HEADER_KEEPOUT, y0, PLATE, board_x1 - HEADER_KEEPOUT, y1, ledge_top)
     wall_top = ledge_top + BOARD_T + 2.0
     for cy in (board_y0, board_y1):
@@ -225,6 +240,17 @@ def plate():
         out += box(board_x0 - FIT - 1.6, ly0, PLATE, board_x0 - FIT, ly1, wall_top)
         out += box(board_x1 + FIT, ly0, PLATE, board_x1 + FIT + 1.6, ly1, wall_top)
     out += box(board_x0, board_y1 + FIT, PLATE, board_x1, board_y1 + FIT + 1.6, wall_top)  # end stop
+
+    # Screen post: a slim column in the gap between the board and the power
+    # module, flaring at 45 degrees into a pad for the 3M tape on the screen's
+    # back (clear of its header tab at -x).
+    sx, sy = SCREEN_C
+    px0, px1 = board_x1 + FIT + 2.0, pwr_x0 - 0.6
+    pad = box(sx - 13, sy - 11, screen_post_top - 2.5, sx + 11, sy + 11, screen_post_top)
+    flare = max(sx + 11 - px1, px0 - (sx - 13), 11.0) + 0.5
+    neck = box(px0, sy - 11, screen_post_top - 2.5 - flare, px1, sy + 11, screen_post_top - 2.5 - flare + 0.1)
+    out += box(px0, sy - 11, PLATE, px1, sy + 11, screen_post_top - 2.5 - flare + 0.1)
+    out += Manifold.batch_hull([neck, pad])
 
     # Power module pedestal (3M tape on top), between the pin blocks at its ends.
     out += box(pwr_x0 + 5, pwr_y0 + 13, PLATE, pwr_x1 - 5, pwr_y1 - 13, pwr_z0)

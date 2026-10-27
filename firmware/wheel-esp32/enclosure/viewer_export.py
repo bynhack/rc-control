@@ -29,33 +29,38 @@ MIN_OVERLAP = 0.01  # mm3; touching faces come out as ~0
 
 
 def board_parts():
-    """ESP32 devboard, USB end against the front wall, plus a USB-C plug in one port."""
+    """ESP32 devboard on its cradle, Dupont plugs on both header rows, a USB-C plug in the CH340C port."""
     x0, x1, y0, y1, z0 = e.board_x0, e.board_x1, e.board_y0, e.board_y1, e.board_z0
     zt = z0 + e.BOARD_T
     cx = e.board_cx
     b = box(x0, y0, z0, x1, y1, zt)
     b += box(cx - 9, y1 - 25.5, zt, cx + 9, y1, zt + 3.2)  # WROOM module at the far end
-    for dx in (-6.5, 6.5):  # two USB-C receptacles, 0.5 proud of the edge
+    for dx in (-6.2, e.CH340_DX):  # OTG and CH340C receptacles, 0.5 proud of the edge
         b += box(cx + dx - 4.47, y0 - 0.5, zt, cx + dx + 4.47, y0 + 6.85, zt + 3.2)
+    dupont = Manifold()
     for px in (x0 + 1.27, x1 - 1.27):  # header rows: plastic spacer + pins below the board
         b += box(px - 1.25, y0 + 1.5, z0 - 2.5, px + 1.25, y1 - 1.5, z0)
         b += box(px - 0.35, y0 + 1.5, z0 - 8.5, px + 0.35, y1 - 1.5, z0 - 2.5)
+        # Dupont housings (14 long) on the pins, then 6 mm for the wires to bend.
+        dupont += box(px - 1.3, y0 + 1.5, z0 - 2.5 - 14 - 6, px + 1.3, y1 - 1.5, z0 - 2.5)
+    dupont -= b  # the housings slide over the pins
     uz = zt + e.USB_STACK / 2
-    plug = box(cx + 6.5 - 6.2, y0 - 0.5 - 22.0, uz - 3.25, cx + 6.5 + 6.2, y0 - 0.5, uz + 3.25)
-    return b, plug
+    ux = cx + e.CH340_DX
+    plug = box(ux - 6.2, y0 - 0.5 - 22.0, uz - 3.25, ux + 6.2, y0 - 0.5, uz + 3.25)
+    return b, dupont, plug
 
 
 def screen_part():
-    """Round GC9A01 module, taped under the top: glass in the recess, header tab to -x."""
+    """Round GC9A01 module taped onto the post: PCB just under the top, glass in the opening."""
     sx, sy = e.SCREEN_C
-    recess = max(e.GLASS_T - e.TAPE_T, 0.3)
-    g_top = e.ZT - e.TOP + recess
-    g_bot = g_top - e.GLASS_T
-    p_bot = g_bot - 1.6
-    s = cyl(sx, sy, g_bot, g_top, e.GLASS_D / 2)
-    s += box(sx + e.GLASS_D / 2 - e.GLASS_SPAN, sy - 13, g_bot, sx, sy + 13, g_top)  # FPC fold
-    s += cyl(sx, sy, p_bot, g_bot, 38.5 / 2)  # round PCB (estimated 38.5)
-    s += box(sx - 19.25 - 8, sy - 10, p_bot, sx - 15, sy + 10, g_bot)  # header tab
+    p_top = e.screen_pcb_top
+    p_bot = p_top - e.SCREEN_PCB_T
+    g_top = p_top + e.GLASS_T
+    s = cyl(sx, sy, p_top, g_top, e.GLASS_D / 2)
+    fold_x = sx + e.GLASS_D / 2 - e.GLASS_SPAN
+    s += box(fold_x, sy - e.GLASS_FOLD_W / 2, p_top, sx, sy + e.GLASS_FOLD_W / 2, g_top)  # FPC side
+    s += cyl(sx, sy, p_bot, p_top, 38.5 / 2)  # round PCB (estimated 38.5)
+    s += box(sx - 19.25 - 8, sy - 10, p_bot, sx - 15, sy + 10, p_top)  # header tab
     s += box(sx - 25.5, sy - 9, p_bot - 2.5, sx - 23, sy + 9, p_bot)  # header spacer
     s += box(sx - 24.6, sy - 9, p_bot - 8.5, sx - 23.9, sy + 9, p_bot - 2.5)  # pins
     s += box(sx - 25.6, sy - 9.5, p_bot - 8.5 - 14, sx - 22.9, sy + 9.5, p_bot - 8.5)  # Dupont housings
@@ -119,7 +124,7 @@ def usba_part():
 
 
 LABELS = {
-    "body": "外殼本體", "plate": "底板", "board": "ESP32 板", "plug": "USB-C 插頭",
+    "body": "外殼本體", "plate": "底板", "board": "ESP32 板", "dupont": "ESP32 杜邦線", "plug": "USB-C 插頭",
     "screen": "圓屏", "module": "BETAFPV 高頻頭", "header": "模組排針", "power": "MB102 電源",
     "dcplug": "DC 插頭", "usba": "USB-A 母座",
 }
@@ -141,10 +146,10 @@ def main():
     os.makedirs(OUT, exist_ok=True)
     for old in glob.glob(os.path.join(OUT, "*")):
         os.remove(old)
-    board, plug = board_parts()
+    board, dupont, plug = board_parts()
     power, dcplug = power_parts()
     parts = {
-        "body": e.body(), "plate": e.plate(), "board": board, "plug": plug, "screen": screen_part(),
+        "body": e.body(), "plate": e.plate(), "board": board, "dupont": dupont, "plug": plug, "screen": screen_part(),
         "module": module_part(), "header": header_part(), "power": power, "dcplug": dcplug, "usba": usba_part(),
     }
     meshes = {k: triangles_b64(m) for k, m in parts.items()}
