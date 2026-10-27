@@ -40,6 +40,7 @@ R = 4.0  # vertical corner radius
 BOARD_L, BOARD_W, BOARD_T = 59.6, 27.8, 1.6
 BOARD_LIFT = 12.0  # board underside above the plate: room for header pins + Dupont
 USB_STACK = 3.2  # USB-C receptacle height above the PCB
+HEADER_KEEPOUT = 3.5  # header row width from each long edge, plastic spacer included
 
 # ---- GC9A01 round screen ----------------------------------------------------
 # Module with the round PCB and the 7-pin header on the side. The panel is a
@@ -159,17 +160,19 @@ def plate():
     # Bay lip between the bay side walls.
     out += box(W / 2 - bay_in_half + FIT, bay_y_lip, PLATE, W / 2 + bay_in_half - FIT, bay_y1, PLATE + BAY_LIP_H)
 
-    # Board cradles: corner posts with a ledge, locating walls on the long edges.
+    # Board cradles. The header rows run along both long edges almost to the
+    # corners, so the board rests on ledges under the middle of its short
+    # edges, between the rows; walls outside the long edges locate it.
     bx0, bx1 = board_x0, board_x0 + BOARD_L
     ledge_top = board_z0
+    for x0, x1 in ((bx0, bx0 + 2.5), (bx1 - 2.5, bx1)):
+        out += box(x0, board_y0 + HEADER_KEEPOUT, PLATE, x1, board_y1 - HEADER_KEEPOUT, ledge_top)
     for cx in (bx0, bx1):
         for cy in (board_y0, board_y1):
             inward_x = 1 if cx == bx0 else -1
             inward_y = 1 if cy == board_y0 else -1
-            # Ledge: 3 x 3 under the corner.
             lx0, lx1 = sorted((cx, cx + inward_x * 3.0))
             ly0, ly1 = sorted((cy, cy + inward_y * 3.0))
-            out += box(lx0, ly0, PLATE, lx1, ly1, ledge_top)
             # Wall along the long edge, outside the board, rising past it.
             wy0, wy1 = sorted((cy - inward_y * FIT, cy - inward_y * (FIT + 1.6)))
             out += box(lx0, wy0, PLATE, lx1, wy1, ledge_top + BOARD_T + 2.0)

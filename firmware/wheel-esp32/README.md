@@ -82,7 +82,9 @@ idf.py -p /dev/cu.usbserial-XXXX flash monitor
 
 外形 75 × 102 × 38 mm（模組倉加上高頻頭後，總高約 64 mm 再加天線）。
 
-**列印前請用卡尺量這幾個值**，跟 `enclosure.py` 開頭標了 `MEASURE` 的參數對一下，改完重新執行就會重新產生：
+**列印前請用卡尺量這幾個值**，跟 `enclosure.py` 開頭標了 `MEASURE` 的參數對一下，改完重新執行就會組裝模擬：`viewer_export.py` 算出三種組合的每對零件碰撞體積和螺絲對位，`viewer.html` 用 three.js 顯示（爆炸圖、剖面、紅色標出重疊）。
+
+重新產生：
 
 1. ~~`MOD_T`~~：BETAFPV 模組厚度，已實測 20 mm（模組倉內深 20.8 mm）。
 2. ~~圓屏模組~~：已照規格書做。玻璃是 Ø35.6 的圓形，加上排線側凸出共 38.1 mm；凹槽是圓形加排線口袋，窗口 Ø32.4 跟可視區同心。排針那塊朝左、排線朝前（靠使用者這側）。
@@ -93,6 +95,7 @@ idf.py -p /dev/cu.usbserial-XXXX flash monitor
 ```bash
 python3 -m venv .venv && .venv/bin/pip install manifold3d numpy trimesh matplotlib
 .venv/bin/python enclosure/enclosure.py
+.venv/bin/python enclosure/viewer_export.py   # 模擬頁面用的資料
 ```
 
 ### 零件
