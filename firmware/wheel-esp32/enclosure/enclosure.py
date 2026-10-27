@@ -176,6 +176,10 @@ def plate():
             if cx == bx1:  # end stop on the far short edge (the USB end stays open)
                 out += box(cx + FIT, ly0, PLATE, cx + FIT + 1.6, ly1, ledge_top + BOARD_T + 2.0)
 
+    # Keep everything above the plate clear of the body's screw columns.
+    for x, y in bosses:
+        out -= cyl(x, y, PLATE, PLATE + 30, BOSS_R + FIT)
+
     holes = Manifold()
     for x, y in bosses + bay_bosses:
         holes += cyl(x, y, -1, PLATE + 1, CLEAR_R)
@@ -279,10 +283,14 @@ def main():
     for name, m in [("body", b), ("plate", p)]:
         if m.is_empty():
             sys.exit(f"{name}: empty result")
-    # Body prints top-down: flip so the top face lands on z = 0.
-    printable_body = b.mirror([0, 0, 1]).translate([0, 0, ZT])
+    # Body prints top-down: turn it over (a rotation; a mirror would swap
+    # left and right) so the top face lands on z = 0.
+    printable_body = b.rotate([0, 180, 0]).translate([W, 0, ZT])
     to_trimesh(printable_body).export(os.path.join(OUT, "body.stl"))
     to_trimesh(p).export(os.path.join(OUT, "plate.stl"))
+    # For bodies printed from the first export, which was mirrored by mistake
+    # (USB-C on the right): the matching mirrored plate.
+    to_trimesh(p.mirror([1, 0, 0]).translate([W, 0, 0])).export(os.path.join(OUT, "plate-for-mirrored-body.stl"))
     case, part, ghost = (0.62, 0.68, 0.76), (0.40, 0.46, 0.55), (0.96, 0.62, 0.04)
     g = [(m, ghost) for m in ghosts()]
     preview(

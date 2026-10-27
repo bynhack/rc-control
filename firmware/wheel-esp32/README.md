@@ -76,6 +76,7 @@ idf.py -p /dev/cu.usbserial-XXXX flash monitor
 |---|---|---|
 | `body.stl` | 已經翻轉好，**頂面朝下**貼平台 | 外殼本體，含圓屏窗口和後方模組倉側牆 |
 | `plate.stl` | 平放 | 底板，含 ESP32 托架、模組倉前擋、腳墊凹槽 |
+| `plate-for-mirrored-body.stl` | 平放 | **只給 2026-10-27 以前印的本體用**：那版 `body.stl` 匯出時被鏡像了（USB-C 開孔在右邊、USB-A 在左邊），要配這塊鏡像底板 |
 
 兩件都**不用支撐**。建議 PLA 或 PETG，層高 0.2 mm，3 圈牆，15～20% 填充。
 
