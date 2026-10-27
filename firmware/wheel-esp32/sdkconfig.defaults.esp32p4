@@ -1,0 +1,3 @@
+# Waveshare ESP32-P4-WIFI6-Touch-LCD-7B (ESP32-P4NRW32: 32 MB flash and PSRAM).
+# Console: UART0 on GPIO37/38 through the board's CH343P "USB TO UART" port.
+CONFIG_ESPTOOLPY_FLASHSIZE_32MB=y

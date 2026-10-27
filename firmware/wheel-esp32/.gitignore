@@ -3,3 +3,6 @@ managed_components/
 sdkconfig
 sdkconfig.old
 dependencies.lock
+build-p4/
+sdkconfig.p4
+sdkconfig.p4.old

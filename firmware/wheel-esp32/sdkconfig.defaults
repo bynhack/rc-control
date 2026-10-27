@@ -1,14 +1,8 @@
-CONFIG_IDF_TARGET="esp32s3"
-# ESP32-S3-N16R8: 16 MB flash.
-CONFIG_ESPTOOLPY_FLASHSIZE_16MB=y
-# The native USB port becomes the USB host, so the console must be on UART0
-# (the board's CH340C "USB-UART" port), not USB-Serial/JTAG.
+# Shared by both targets; per-target settings are in sdkconfig.defaults.<target>.
+# The native USB port is the USB host, so the console must be on UART0 (the
+# board's USB-to-UART port), not USB-Serial/JTAG.
 CONFIG_ESP_CONSOLE_UART_DEFAULT=y
 CONFIG_ESP_CONSOLE_UART_BAUDRATE=115200
-# N16R8: 8 MB octal PSRAM.
-CONFIG_SPIRAM=y
-CONFIG_SPIRAM_MODE_OCT=y
-CONFIG_SPIRAM_SPEED_80M=y
 # Fonts used by the status screen.
 CONFIG_LV_FONT_MONTSERRAT_14=y
 CONFIG_LV_FONT_MONTSERRAT_20=y
