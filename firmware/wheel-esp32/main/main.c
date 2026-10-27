@@ -257,6 +257,7 @@ static void ui_task(void *arg) {
         bool fresh = at >= 0 && (now - at) <= (int64_t)STALE_MS * 1000;
         const display_state_t ds = {
             .wheel = fresh,
+            .axes = a,
             .vid = vid,
             .pid = pid,
             .rate = rate,

@@ -1,5 +1,7 @@
 #include "display.h"
 
+#include "sdkconfig.h"
+
 #if CONFIG_IDF_TARGET_ESP32S3
 
 #include <math.h>
@@ -56,7 +58,7 @@ static lv_obj_t *make_arc(lv_obj_t *parent, int size, int width, int start, int 
     lv_arc_set_mode(arc, LV_ARC_MODE_SYMMETRICAL);
     lv_arc_set_value(arc, 0);
     lv_obj_remove_style(arc, NULL, LV_PART_KNOB);
-    lv_obj_set_clickable(arc, false);
+    lv_obj_remove_flag(arc, LV_OBJ_FLAG_CLICKABLE);
     lv_obj_set_style_arc_width(arc, width, LV_PART_MAIN);
     lv_obj_set_style_arc_width(arc, width, LV_PART_INDICATOR);
     lv_obj_set_style_arc_color(arc, lv_color_hex(track), LV_PART_MAIN);
@@ -208,16 +210,4 @@ void display_show(const display_state_t *s) {
     lvgl_port_unlock();
 }
 
-#else  // no screen driver for this target yet (the P4 7" dashboard comes later)
-
-#include "esp_log.h"
-
-void display_init(void) {
-    ESP_LOGI("display", "no screen on this target yet");
-}
-
-void display_show(const display_state_t *s) {
-    (void)s;
-}
-
-#endif
+#endif  // CONFIG_IDF_TARGET_ESP32S3
