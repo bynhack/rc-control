@@ -122,11 +122,11 @@
   <aside>
     <header>
       <h1>外殼組裝模擬</h1>
-      <p class="lede">直接載入要列印的 STL 和零件示意模型，用精確的幾何布林運算，算出每兩個零件之間的重疊體積。紅色就是會頂到的地方。</p>
+      <p class="lede">v2 外殼：高頻頭從後面插進 45 × 60 的模組倉，圓屏和 MB102 電源用 3M 膠固定。載入要列印的外殼和零件示意模型，用精確的幾何布林運算算出每兩個零件的重疊體積，紅色就是會頂到的地方。</p>
     </header>
 
     <section>
-      <p class="label">組合</p>
+      <p class="label">設計</p>
       <div class="tabs" id="tabs"></div>
     </section>
 
@@ -174,20 +174,20 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 
 const SCENARIOS = {
-  design:  { name: "① 正確設計", sub: "body.stl + plate.stl" },
-  printed: { name: "② 你印的本體 + 鏡像底板", sub: "plate-for-mirrored-body.stl" },
-  wrong:   { name: "③ 你印的本體 + 原底板", sub: "你遇到的情況" },
+  design: { name: "v2 外殼", sub: "body.stl + plate.stl" },
 };
 // Exploded offsets per part, in mm at explode = 1, and which assembly each part moves with.
 const PARTS = {
-  body:   { color: 0xb7bec7, move: [0, 0, 34] },
-  usba:   { color: 0xa9b3bf, move: [0, 0, 34] },
-  screen: { color: 0x2b3f57, move: [0, 0, 70] },
-  plate:  { color: 0x7d8792, move: [0, 0, -26] },
-  board:  { color: 0x24907f, move: [0, 0, -12] },
-  plug:   { color: 0x59616d, move: [-30, 0, -12] },
-  module: { color: 0x474e5a, move: [0, 44, 6] },
-  dupont: { color: 0xe0a526, move: [0, 44, 6] },
+  body:   { color: 0xb7bec7, move: [0, 0, 40] },
+  usba:   { color: 0xa9b3bf, move: [-24, 0, 40] },
+  header: { color: 0xe0a526, move: [0, 0, 40] },
+  screen: { color: 0x2b3f57, move: [0, 0, 90] },
+  plate:  { color: 0x7d8792, move: [0, 0, -30] },
+  board:  { color: 0x24907f, move: [0, 0, -14] },
+  plug:   { color: 0x59616d, move: [0, -34, -14] },
+  power:  { color: 0x3f7fd0, move: [0, 0, -14] },
+  dcplug: { color: 0x59616d, move: [34, 0, -14] },
+  module: { color: 0x474e5a, move: [0, 60, 0] },
 };
 const OVERLAP_COLOR = 0xff2d2d;
 
@@ -214,7 +214,7 @@ scene.add(fill);
 const clipPlane = new THREE.Plane(new THREE.Vector3(-1, 0, 0), 1e4);
 const cache = new Map();
 const groups = {};       // part -> THREE.Group
-let report, current = "printed", sectionAxis = "x", overlapMesh = null;
+let report, current = "design", sectionAxis = "x", overlapMesh = null;
 const hidden = new Set();
 let dims;
 
@@ -311,7 +311,7 @@ function applyAll() {
     // Overlaps belong to two parts; show them only when nothing is exploded apart.
     overlapMesh.visible = !hidden.has("overlap") && ex < 0.02;
   }
-  const span = sectionAxis === "x" ? dims.W : dims.D + 30;
+  const span = sectionAxis === "x" ? dims.W : dims.D;
   if (sec >= 0.999) {
     clipPlane.constant = 1e4;
     document.getElementById("sectionVal").textContent = "關";
@@ -381,8 +381,8 @@ function buildPartChips() {
 
 const target = new THREE.Vector3();
 function setView(v) {
-  target.set(dims.W / 2, (dims.D + 24) / 2, 22);
-  const d = 260;
+  target.set(dims.W / 2, dims.D / 2 + 6, 34);
+  const d = 330;
   const dirs = {
     iso: [-0.75, -1, 0.85], front: [0, -1, 0.12], back: [0, 1, 0.25], top: [0, -0.001, 1],
     bottom: [0, -0.001, -1], left: [-1, 0, 0.15], right: [1, 0, 0.15],
