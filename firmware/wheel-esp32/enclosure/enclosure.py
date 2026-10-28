@@ -12,7 +12,8 @@ Holds:
     the right wall
   - USB-A female breakout for the wheel on the left wall
 
-Two parts, both print without supports:
+Two parts, both print without supports, joined by four M3 x 8 countersunk
+screws into M3 heat-set inserts:
   body.stl   top face on the bed (exported already turned over)
   plate.stl  flat; bottom plate with the board cradle, screen post and
              power pedestal
@@ -95,8 +96,13 @@ DC_HOLE = (12.0, 12.0)  # the mini-USB input stays inside (DC only)
 USBA_HOLE = (13.6, 6.2)  # width x height
 USBA_C = (66.0, PLATE + 37.0)  # y, z on the left wall: behind the screen, above the board
 
-# ---- screws (M3 self-tapping, plate -> body) --------------------------------
-BOSS_R, PILOT_R, CLEAR_R, HEAD_R = 3.5, 1.3, 1.7, 3.0
+# ---- screws (M3 countersunk DIN 7991, plate -> heat-set inserts in the body)
+# Inserts are pressed into the bottom of the body's columns with a soldering
+# iron (the body's bottom faces up after printing). INSERT_D is the printed
+# hole: about 0.5 under the insert's knurl OD (M3 x 5.7, OD 4.6 -> 4.0).
+INSERT_D, INSERT_L = 4.0, 5.7  # MEASURE: your inserts
+BOSS_C = 3.5  # column centre in from the inside of the walls
+BOSS_R, CLEAR_R, HEAD_D = 4.0, 1.7, 6.4  # HEAD_D: countersink at the plate's underside
 
 
 def box(x0, y0, z0, x1, y1, z1):
@@ -156,10 +162,10 @@ pwr_y0, pwr_y1 = PWR_Y0, PWR_Y0 + PWR_L
 pwr_z0 = Z0 + PWR_LIFT
 
 bosses = [
-    (WALL + BOSS_R, WALL + BOSS_R),
-    (W - WALL - BOSS_R, WALL + BOSS_R),
-    (WALL + BOSS_R, D - WALL - BOSS_R),
-    (W - WALL - BOSS_R, D - WALL - BOSS_R),
+    (WALL + BOSS_C, WALL + BOSS_C),
+    (W - WALL - BOSS_C, WALL + BOSS_C),
+    (WALL + BOSS_C, D - WALL - BOSS_C),
+    (W - WALL - BOSS_C, D - WALL - BOSS_C),
 ]
 
 
@@ -179,7 +185,8 @@ def body():
     shell = rbox(0, 0, Z0, W, D, H, R) - rbox(WALL, WALL, Z0 - 1, W - 2 * WALL, D - 2 * WALL, H - TOP + 1, R - WALL)
 
     for x, y in bosses:
-        shell += cyl(x, y, Z0, ZT, BOSS_R) - cyl(x, y, Z0 - 1, Z0 + 12, PILOT_R)
+        # Insert hole, 2 mm deeper than the insert for displaced plastic and the screw tip.
+        shell += cyl(x, y, Z0, ZT, BOSS_R) - cyl(x, y, Z0 - 1, Z0 + INSERT_L + 2.0, INSERT_D / 2)
 
     # Module bay: a solid block at the back, minus the module shape.
     shell += box(CX - bay_outer_half, bay_y0 - BAY_WALL, Z0, CX + bay_outer_half, D, ZT)
@@ -234,9 +241,10 @@ def plate():
     for y0, y1 in ((board_y0, board_y0 + 4.0), (board_y1 - 4.0, board_y1)):
         out += box(board_x0 + HEADER_KEEPOUT, y0, PLATE, board_x1 - HEADER_KEEPOUT, y1, ledge_top)
     wall_top = ledge_top + BOARD_T + 2.0
-    for cy in (board_y0, board_y1):
+    # The front pair starts 6 mm in, clear of the front-left screw column.
+    for cy, skip in ((board_y0, 6.0), (board_y1, 0.0)):
         inward = 1 if cy == board_y0 else -1
-        ly0, ly1 = sorted((cy, cy + inward * 3.0))
+        ly0, ly1 = sorted((cy + inward * skip, cy + inward * (skip + 3.0)))
         out += box(board_x0 - FIT - 1.6, ly0, PLATE, board_x0 - FIT, ly1, wall_top)
         out += box(board_x1 + FIT, ly0, PLATE, board_x1 + FIT + 1.6, ly1, wall_top)
     out += box(board_x0, board_y1 + FIT, PLATE, board_x1, board_y1 + FIT + 1.6, wall_top)  # end stop
@@ -262,7 +270,8 @@ def plate():
     holes = Manifold()
     for x, y in bosses:
         holes += cyl(x, y, -1, PLATE + 1, CLEAR_R)
-        holes += cyl(x, y, -1, 1.6, HEAD_R + 0.1, CLEAR_R)  # head recess
+        sink = HEAD_D / 2 - CLEAR_R  # 90 degree countersink: as deep as it is wide per side
+        holes += cyl(x, y, -1, sink, HEAD_D / 2 + 1, CLEAR_R)
     for x, y in [(10, 10), (W - 10, 10), (10, D - 10), (W - 10, D - 10)]:
         holes += cyl(x, y, -1, 0.8, 5.0)  # rubber feet
     return out - holes

@@ -25,11 +25,15 @@ static const char *TAG = "multi";
 #define BIND_MS 5000
 
 // The car's protocol, from the MULTI protocol list (Multiprotocol.h).
-// Placeholder until the user's cars are known: FlySky AFHDS2A, PWM_IBUS.
-#define PROTOCOL 28
+// Futaba S-FHSS. No bind on the TX side: the receiver latches on to the
+// first S-FHSS transmitter it hears while its bind button is held.
+// OPTION is the CC2500 fine frequency tune, different for every module;
+// -50 is the seller's value for the IRX4+. If the link is unstable, find
+// the module's own value (MULTI docs/Frequency_Tuning.md).
+#define PROTOCOL 21
 #define SUB_PROTOCOL 0
 #define RX_NUM 0
-#define OPTION 0
+#define OPTION -50
 #define LOW_POWER 0
 
 #define STEERING_CHANNEL 1
