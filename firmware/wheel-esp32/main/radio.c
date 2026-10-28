@@ -11,6 +11,8 @@ static const char *TAG = "radio";
 #define NVS_KEY "cfg"
 #define NVS_KEY_LANG "lang"
 #define NVS_KEY_DASH "dash"
+#define NVS_KEY_KMH "kmh"
+#define DEFAULT_KMH 30
 // Bump when radio_config_t changes, so an old blob is ignored.
 #define CFG_VERSION 1
 
@@ -128,6 +130,25 @@ void ui_dash_set(int dash) {
     nvs_handle_t h;
     if (nvs_open(NVS_NS, NVS_READWRITE, &h) == ESP_OK) {
         nvs_set_u8(h, NVS_KEY_DASH, (uint8_t)dash);
+        nvs_commit(h);
+        nvs_close(h);
+    }
+}
+
+int ui_topspeed_get(void) {
+    uint8_t v = DEFAULT_KMH;
+    nvs_handle_t h;
+    if (nvs_open(NVS_NS, NVS_READONLY, &h) == ESP_OK) {
+        nvs_get_u8(h, NVS_KEY_KMH, &v);
+        nvs_close(h);
+    }
+    return v < 5 ? DEFAULT_KMH : v;
+}
+
+void ui_topspeed_set(int kmh) {
+    nvs_handle_t h;
+    if (nvs_open(NVS_NS, NVS_READWRITE, &h) == ESP_OK) {
+        nvs_set_u8(h, NVS_KEY_KMH, (uint8_t)kmh);
         nvs_commit(h);
         nvs_close(h);
     }

@@ -2,7 +2,7 @@
 // driven through the board support package's LVGL adapter.
 //
 // The main screen is only an instrument cluster (dash_p4.c: several looks,
-// swipe to switch) and one line of notices. Everything else (radio
+// swipe to switch); each shows the driver's notices its own way. Everything else (radio
 // choice, link, pedals, wheel) sits behind the settings button, on the
 // setup page's two tabs. Same palette as the PC program (src/gui/theme.rs).
 //
@@ -34,7 +34,6 @@ static const char *TAG = "display";
 #define MID_CX 512
 #define LQ_SEGS 10
 
-static lv_obj_t *s_notice;
 // Status tab.
 static lv_obj_t *s_sub, *s_wheel_label, *s_button_label, *s_steer_bar;
 static lv_obj_t *s_gas_bar, *s_gas_label, *s_brake_bar, *s_brake_label;
@@ -121,7 +120,11 @@ static const char *const TEXT[T_COUNT][2] = {
     [T_NO_LINK] = {"车未连线", "車未連線"},
     [T_DASH_A] = {"曜石", "曜石"},
     [T_DASH_B] = {"碳纤", "碳纖"},
-    [T_CAP_SPEED] = {"车速 %", "車速 %"},
+    [T_CAP_SPEED] = {"km/h", "km/h"},
+    [T_TAB_DRIVE] = {"驾驶设置", "駕駛設定"},
+    [T_TOP_SPEED] = {"最高车速", "最高車速"},
+    [T_TOP_HINT] = {"车上没有测速器：仪表的车速 = 估算的速度比例 × 最高车速。按这台车的实际极速填写。",
+                    "車上沒有測速器：儀表的車速 = 估算的速度比例 × 最高車速。按這台車的實際極速填寫。"},
     [T_CAP_POWER] = {"动力", "動力"},
     [T_CAP_POWER10] = {"动力 ×10%", "動力 ×10%"},
 };
@@ -281,12 +284,15 @@ static void on_lang(lv_event_t *e) {
     }
 }
 
-static lv_obj_t *s_tab_page[2], *s_tab_btn[2];
+#define TABS 3
+static lv_obj_t *s_tab_page[TABS], *s_tab_btn[TABS];
+static lv_obj_t *s_kmh_val;
+static int s_kmh;
 static int s_tab;
 
 static void on_tab(lv_event_t *e) {
     s_tab = (int)(intptr_t)lv_event_get_user_data(e);
-    for (int i = 0; i < 2; i++) {
+    for (int i = 0; i < TABS; i++) {
         if (i == s_tab) {
             lv_obj_remove_flag(s_tab_page[i], LV_OBJ_FLAG_HIDDEN);
         } else {
@@ -329,13 +335,6 @@ static void build_top(lv_obj_t *scr) {
     lv_obj_set_style_border_color(setup, hex(C_EDGE), 0);
     lv_obj_set_style_bg_opa(setup, LV_OPA_10, 0);
     lv_obj_add_event_cb(setup, on_setup_open, LV_EVENT_CLICKED, NULL);
-}
-
-static void build_center(lv_obj_t *scr) {
-    s_notice = label(scr, &cjk_24, C_AMBER, "");
-    lv_obj_set_width(s_notice, 600);
-    lv_obj_set_style_text_align(s_notice, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_set_pos(s_notice, MID_CX - 300, 540);
 }
 
 // Status tab: the wheel, pedals and the radio link, for checking things.
@@ -401,6 +400,32 @@ static lv_obj_t *setup_label(lv_obj_t *p, int x, int y, int id) {
     return l;
 }
 
+static void on_kmh(lv_event_t *e) {
+    int v = s_kmh + (int)(intptr_t)lv_event_get_user_data(e);
+    s_kmh = v < 5 ? 5 : (v > 150 ? 150 : v);
+    ui_topspeed_set(s_kmh);
+}
+
+// Driving tab: what the dashboard needs to know about the car.
+static void build_drive_tab(lv_obj_t *t) {
+    setup_label(t, M + 8, 88, T_TOP_SPEED);
+    static const int steps[4] = {-10, -1, 1, 10};
+    static const char *names[4] = {"-10", "-1", "+1", "+10"};
+    for (int i = 0; i < 4; i++) {
+        int x = M + 8 + i * 76 + (i >= 2 ? 200 : 0);
+        lv_obj_t *b = button(t, x, 112, 68, 56, C_DIM, &lv_font_montserrat_20, names[i]);
+        lv_obj_add_event_cb(b, on_kmh, LV_EVENT_CLICKED, (void *)(intptr_t)steps[i]);
+    }
+    s_kmh_val = label(t, &lv_font_montserrat_32, C_TEXT, "");
+    lv_obj_set_width(s_kmh_val, 190);
+    lv_obj_set_style_text_align(s_kmh_val, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_pos(s_kmh_val, M + 8 + 2 * 76, 122);
+    lv_obj_t *hint = track(label(t, &cjk_16, C_DIM, ""), T_TOP_HINT);
+    lv_obj_set_width(hint, 1024 - 2 * (M + 8));
+    lv_label_set_long_mode(hint, LV_LABEL_LONG_WRAP);
+    lv_obj_set_pos(hint, M + 8, 190);
+}
+
 // Full-screen page over the dashboard, hidden until RADIO is tapped.
 static void build_setup(void) {
     lv_obj_t *p = lv_obj_create(lv_layer_top());
@@ -414,7 +439,7 @@ static void build_setup(void) {
 
     // Two tabs: radio settings and status. Pages first, so the header
     // buttons sit on top of them.
-    for (int i = 0; i < 2; i++) {
+    for (int i = 0; i < TABS; i++) {
         lv_obj_t *t = lv_obj_create(p);
         lv_obj_remove_style_all(t);
         lv_obj_set_size(t, 1024, 600);
@@ -423,19 +448,21 @@ static void build_setup(void) {
         s_tab_page[i] = t;
     }
     lv_obj_add_flag(s_tab_page[1], LV_OBJ_FLAG_HIDDEN);
-    static const int tabs[2] = {T_SETUP_TITLE, T_STATUS};
-    for (int i = 0; i < 2; i++) {
-        s_tab_btn[i] = button(p, M + 8 + i * 176, 12, 164, 48, C_CYAN, &cjk_20, "");
+    lv_obj_add_flag(s_tab_page[2], LV_OBJ_FLAG_HIDDEN);
+    static const int tabs[TABS] = {T_SETUP_TITLE, T_TAB_DRIVE, T_STATUS};
+    for (int i = 0; i < TABS; i++) {
+        s_tab_btn[i] = button(p, M + 8 + i * 156, 12, 146, 48, C_CYAN, &cjk_20, "");
         track(lv_obj_get_child(s_tab_btn[i], 0), tabs[i]);
         lv_obj_add_event_cb(s_tab_btn[i], on_tab, LV_EVENT_CLICKED, (void *)(intptr_t)i);
     }
-    build_status(s_tab_page[1]);
+    build_drive_tab(s_tab_page[1]);
+    build_status(s_tab_page[2]);
     lv_obj_t *done = button(p, 1024 - M - 160, 12, 160, 48, C_GREEN, &cjk_20, "");
     track(lv_obj_get_child(done, 0), T_DONE);
     lv_obj_add_event_cb(done, on_setup_close, LV_EVENT_CLICKED, NULL);
     static const char *langs[2] = {"简体", "繁體"};
     for (int i = 0; i < 2; i++) {
-        s_lang_btn[i] = button(p, 1024 - M - 160 - 16 - (2 - i) * 120, 12, 112, 48, C_DIM, &cjk_20, langs[i]);
+        s_lang_btn[i] = button(p, 1024 - M - 160 - 16 - (2 - i) * 104, 12, 96, 48, C_DIM, &cjk_20, langs[i]);
         lv_obj_add_event_cb(s_lang_btn[i], on_lang, LV_EVENT_CLICKED, (void *)(intptr_t)i);
     }
 
@@ -517,13 +544,13 @@ void display_init(void) {
     bsp_display_backlight_on();
 
     s_lang = ui_lang_get() ? LANG_TC : LANG_SC;
+    s_kmh = ui_topspeed_get();
     bsp_display_lock(-1);
     lv_obj_t *scr = lv_screen_active();
     lv_obj_set_style_bg_color(scr, hex(C_BG), 0);
     lv_obj_set_style_bg_opa(scr, LV_OPA_COVER, 0);
     lv_obj_remove_flag(scr, LV_OBJ_FLAG_SCROLLABLE);
     dash_build(scr);
-    build_center(scr);
     build_top(scr);
     build_setup();
     bsp_display_unlock();
@@ -587,23 +614,8 @@ static int notice_id(const char *n) {
 
 static void show_drive(const display_state_t *s) {
     const control_view_t *c = &s->ctl;
-    float thr = c->output.throttle;
-    const dash_values_t v = {
-        .on = c->engine && s->wheel,
-        .gear = c->gear,
-        // Power: what drives the wheels; braking doesn't count.
-        .power = (c->braking || thr * c->speed < 0) ? 0.0f : fabsf(thr),
-        .throttle = thr,
-        .speed = c->speed,
-        .cap = c->gear == GEAR_N ? 0.0f : c->gear_max,
-        .steer = s->wheel ? c->steering : 0.0f,
-    };
-    dash_show(&v);
-    if (lv_obj_get_y(s_notice) != dash_notice_y()) {
-        lv_obj_set_y(s_notice, dash_notice_y());
-    }
-
-    // One line for whatever needs the driver's attention, most urgent first.
+    // Whatever needs the driver's attention, most urgent first; each
+    // dashboard decides where to show it.
     int n = notice_id(c->notice);
     uint32_t nc = C_AMBER;
     if (n < 0) {
@@ -617,8 +629,21 @@ static void show_drive(const display_state_t *s) {
             n = T_NO_LINK, nc = C_RED;
         }
     }
-    set_text(s_notice, n >= 0 ? tr(n) : "");
-    lv_obj_set_style_text_color(s_notice, hex(nc), 0);
+    float thr = c->output.throttle;
+    const dash_values_t v = {
+        .on = c->engine && s->wheel,
+        .gear = c->gear,
+        // Power: what drives the wheels; braking doesn't count.
+        .power = (c->braking || thr * c->speed < 0) ? 0.0f : fabsf(thr),
+        .throttle = thr,
+        .speed = c->speed,
+        .cap = c->gear == GEAR_N ? 0.0f : c->gear_max,
+        .steer = s->wheel ? c->steering : 0.0f,
+        .notice = n >= 0 ? tr(n) : NULL,
+        .top_kmh = s_kmh,
+        .notice_color = nc,
+    };
+    dash_show(&v);
 }
 
 static void show_link(const display_state_t *s) {
@@ -698,8 +723,12 @@ static void show_setup(const display_state_t *s) {
     }
     for (int i = 0; i < 2; i++) {
         highlight(s_lang_btn[i], (int)s_lang == i, C_GREEN);
+    }
+    for (int i = 0; i < TABS; i++) {
         highlight(s_tab_btn[i], s_tab == i, C_CYAN);
     }
+    snprintf(buf, sizeof(buf), "%d km/h", s_kmh);
+    set_text(s_kmh_val, buf);
     for (int i = 0; i < MULTI_PROTO_COUNT && i < 16; i++) {
         highlight(s_proto_btn[i], c->proto == i, c->kind == RADIO_MULTI_SERIAL ? C_AMBER : C_DIM);
     }
@@ -737,7 +766,7 @@ static void show_setup(const display_state_t *s) {
 }
 
 void display_show(const display_state_t *s) {
-    if (s_notice == NULL || !bsp_display_lock(20)) {
+    if (s_tab_page[0] == NULL || !bsp_display_lock(20)) {
         return;
     }
     show_drive(s);

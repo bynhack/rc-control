@@ -47,3 +47,8 @@ void ui_lang_set(int lang);
 // Which instrument cluster the main screen shows (dash_p4.c), saved.
 int ui_dash_get(void);
 void ui_dash_set(int dash);
+
+// The car's top speed in km/h, for turning the modelled speed into km/h on
+// the dashboard (there is no speed sensor). Default 30.
+int ui_topspeed_get(void);
+void ui_topspeed_set(int kmh);

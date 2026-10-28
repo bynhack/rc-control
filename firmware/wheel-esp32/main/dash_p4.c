@@ -49,7 +49,6 @@ static lv_image_dsc_t s_a_bg, s_a_arc, s_a_tip, s_b_bg, s_b_needle, s_b_wheel;
 typedef struct {
     lv_obj_t *root;
     void (*show)(const dash_values_t *v);
-    int notice_y;
 } dash_t;
 
 static dash_t s_dash[DASHES];
@@ -59,6 +58,10 @@ static int64_t s_toast_at = -1;
 
 static int pct(float v) {
     return (int)lroundf(fabsf(v) * 100.0f);
+}
+
+static int kmh(const dash_values_t *v) {
+    return (int)lroundf(fminf(fabsf(v->speed), 1.0f) * v->top_kmh);
 }
 
 // Concept angles: degrees clockwise from 12 o'clock.
@@ -143,7 +146,8 @@ static void visible(lv_obj_t *o, bool on) {
 #define A_PATH_SEGS 4
 
 static struct {
-    lv_obj_t *arc, *tip, *speed, *bar, *cap, *power, *pill, *gear[5], *wheel[2];
+    lv_obj_t *arc, *tip, *speed, *caption, *msg, *bar, *cap, *power, *pill, *gear[5], *wheel[2], *tick[11];
+    int top_kmh;
     lv_obj_t *path[2][A_PATH_SEGS];
     lv_point_precise_t pts[2][A_PATH_PTS];
     int gi;
@@ -169,9 +173,18 @@ static void a_build(lv_obj_t *r) {
     s_a.tip = lv_image_create(r);
     lv_image_set_src(s_a.tip, &s_a_tip);
 
+    // The dial's numbers in km/h, from the car's top speed.
+    for (int i = 0; i <= 10; i++) {
+        float x, y;
+        polar(A_CX, A_CY, A_R + 56, -135.0f + i * 27.0f, &x, &y);
+        s_a.tick[i] = text_at(r, &saira_l_15, 0x5f7184, (int)lroundf(x), (int)lroundf(y) + 5, 60, LV_TEXT_ALIGN_CENTER);
+    }
     s_a.speed = text_at(r, &saira_thin_132, 0xf2f6fa, A_CX, A_CY + 38, 420, LV_TEXT_ALIGN_CENTER);
-    lv_obj_t *cap = ui_track(text_at(r, &cjk_16, 0x56697d, A_CX, A_CY + 78, 200, LV_TEXT_ALIGN_CENTER), T_CAP_SPEED);
-    lv_obj_set_style_text_letter_space(cap, 6, 0);
+    // Under the number: its caption, or a notice while driving.
+    s_a.caption = text_at(r, &cjk_20, 0x56697d, A_CX, A_CY + 80, 400, LV_TEXT_ALIGN_CENTER);
+    lv_obj_set_style_text_letter_space(s_a.caption, 4, 0);
+    // With the engine off the notice takes the number's place.
+    s_a.msg = text_at(r, &cjk_32, C_DIM, A_CX, A_CY + 12, 400, LV_TEXT_ALIGN_CENTER);
 
     lv_obj_t *pc = ui_track(text_at(r, &cjk_14, 0x56697d, 92, 140, 80, LV_TEXT_ALIGN_LEFT), T_CAP_POWER);
     lv_obj_set_style_text_letter_space(pc, 4, 0);
@@ -216,7 +229,13 @@ static void a_build(lv_obj_t *r) {
 }
 
 static void a_show(const dash_values_t *v) {
-    int sp = v->on ? pct(v->speed) : 0;
+    if (v->top_kmh != s_a.top_kmh) {
+        s_a.top_kmh = v->top_kmh;
+        for (int i = 0; i <= 10; i++) {
+            set_number(s_a.tick[i], (int)lroundf(v->top_kmh * i / 10.0f));
+        }
+    }
+    int sp = v->on ? kmh(v) : 0;
     float sf = v->on ? fminf(fabsf(v->speed), 1.0f) : 0.0f;
     lv_arc_set_value(s_a.arc, (int)lroundf(sf * 1000.0f));
     visible(s_a.arc, sf > 0.003f);
@@ -225,7 +244,17 @@ static void a_show(const dash_values_t *v) {
     lv_obj_set_pos(s_a.tip, (int)lroundf(tx) - 24, (int)lroundf(ty) - 24);
     visible(s_a.tip, v->on);
     set_number(s_a.speed, sp);
-    lv_obj_set_style_text_color(s_a.speed, hex(!v->on ? 0x2a3644 : (v->speed < 0 ? 0x7fdcff : 0xf2f6fa)), 0);
+    lv_obj_set_style_text_color(s_a.speed, hex(v->speed < 0 ? 0x7fdcff : 0xf2f6fa), 0);
+    bool big = !v->on && v->notice;
+    visible(s_a.speed, !big);
+    visible(s_a.msg, big);
+    if (big) {
+        set_text(s_a.msg, v->notice);
+        lv_obj_set_style_text_color(s_a.msg, hex(v->notice_color == C_DIM ? 0x8fa3b8 : v->notice_color), 0);
+    }
+    bool small = v->on && v->notice;
+    set_text(s_a.caption, small ? v->notice : (big ? "" : ui_tr(T_CAP_SPEED)));
+    lv_obj_set_style_text_color(s_a.caption, hex(small ? v->notice_color : 0x56697d), 0);
 
     int pw = v->on ? pct(v->power) : 0;
     lv_bar_set_value(s_a.bar, pw, LV_ANIM_OFF);
@@ -280,7 +309,7 @@ static void a_show(const dash_values_t *v) {
 #define B_WHEEL_Y 530
 
 static struct {
-    lv_obj_t *red, *needle, *gear, *speed, *led[B_LEDS], *wing[2][2], *wheel, *angle;
+    lv_obj_t *red, *needle, *gear, *speed, *msg, *led[B_LEDS], *wing[2][2], *wheel, *angle;
     lv_point_precise_t wing_pts[2][3];
     int lit;
 } s_b = {.lit = -1};
@@ -339,6 +368,7 @@ static void b_build(lv_obj_t *r) {
     lv_obj_set_pos(s_b.wheel, B_WHEEL_X - 40, B_WHEEL_Y - 40);
     lv_image_set_pivot(s_b.wheel, 40, 40);
     s_b.angle = text_at(r, &barlow_28, 0xd8d9db, B_WHEEL_X + 48, B_WHEEL_Y + 10, 120, LV_TEXT_ALIGN_LEFT);
+    s_b.msg = text_at(r, &cjk_24, C_DIM, B_CX, 562, 500, LV_TEXT_ALIGN_CENTER);
 }
 
 // The first len pixels of a wing as a polyline; returns the point count.
@@ -378,8 +408,10 @@ static void b_show(const dash_values_t *v) {
     }
     set_text(s_b.gear, GEAR_NAMES[(int)v->gear - GEAR_R]);
     lv_obj_set_style_text_color(s_b.gear, hex(!v->on ? 0x3a3c40 : (v->gear == GEAR_R ? 0xffb23c : 0xffffff)), 0);
-    set_number(s_b.speed, v->on ? pct(v->speed) : 0);
+    set_number(s_b.speed, v->on ? kmh(v) : 0);
     lv_obj_set_style_text_color(s_b.speed, hex(v->on ? 0xffffff : 0x3a3c40), 0);
+    set_text(s_b.msg, v->notice ? v->notice : "");
+    lv_obj_set_style_text_color(s_b.msg, hex(v->notice_color == C_DIM ? 0x9a9ea5 : v->notice_color), 0);
 
     int lit = (int)lroundf(pw * B_LEDS);
     if (lit != s_b.lit) {
@@ -444,9 +476,9 @@ void dash_build(lv_obj_t *scr) {
     s_b_needle = IMAGE(b_needle, 40, 262, LV_COLOR_FORMAT_ARGB8888);
     s_b_wheel = IMAGE(b_wheel, 80, 80, LV_COLOR_FORMAT_ARGB8888);
 
-    s_dash[0] = (dash_t){.root = root(scr, &s_a_bg), .show = a_show, .notice_y = 30};
+    s_dash[0] = (dash_t){.root = root(scr, &s_a_bg), .show = a_show};
     a_build(s_dash[0].root);
-    s_dash[1] = (dash_t){.root = root(scr, &s_b_bg), .show = b_show, .notice_y = 540};
+    s_dash[1] = (dash_t){.root = root(scr, &s_b_bg), .show = b_show};
     b_build(s_dash[1].root);
 
     for (int i = 0; i < DASHES; i++) {
@@ -465,10 +497,6 @@ void dash_show(const dash_values_t *v) {
         visible(s_toast, false);
         s_toast_at = -1;
     }
-}
-
-int dash_notice_y(void) {
-    return s_dash[s_cur].notice_y;
 }
 
 #endif  // CONFIG_IDF_TARGET_ESP32P4

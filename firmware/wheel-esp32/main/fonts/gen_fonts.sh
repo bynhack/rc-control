@@ -35,6 +35,7 @@ digits() { # name font size symbols
 digits saira_thin_132 Saira-Thin.ttf 132 "0123456789"
 digits saira_xl_30 Saira-ExtraLight.ttf 30 "0123456789"
 digits saira_l_30 Saira-Light.ttf 30 "RN123"
+digits saira_l_15 Saira-Light.ttf 15 "0123456789"
 digits barlow_58 BarlowCondensed-ExtraBoldItalic.ttf 58 "RN123"
 digits barlow_64 BarlowCondensed-ExtraBoldItalic.ttf 64 "0123456789"
 digits barlow_28 BarlowCondensed-ExtraBoldItalic.ttf 28 "0123456789LR°"
