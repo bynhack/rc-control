@@ -38,3 +38,8 @@ radio_config_t radio_config(void);
 // Applies and saves.
 void radio_set(const radio_config_t *c);
 const char *radio_kind_name(radio_kind_t k);
+
+// Screen language, saved next to the radio choice: 0 = Simplified Chinese
+// (the default), 1 = Traditional.
+int ui_lang_get(void);
+void ui_lang_set(int lang);

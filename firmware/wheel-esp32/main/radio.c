@@ -9,15 +9,18 @@ static const char *TAG = "radio";
 
 #define NVS_NS "radio"
 #define NVS_KEY "cfg"
+#define NVS_KEY_LANG "lang"
 // Bump when radio_config_t changes, so an old blob is ignored.
 #define CFG_VERSION 1
 
-// Surface protocols first. Option: CC2500 fine tune (S-FHSS -50 is the
+// Surface protocols first; names are shown on the screen (display_p4.c
+// fonts must cover them). Option: CC2500 fine tune (S-FHSS -50 is the
 // IRX4+ seller's value), DSM channel count.
 const multi_proto_t MULTI_PROTOS[] = {
-    {"AFHDS 2A", 28, 0, 0},  {"AFHDS", 1, 0, 0},      {"S-FHSS", 21, 0, -50}, {"FRSKY D8", 3, 0, 0},
-    {"FRSKY D16", 15, 0, 0}, {"DSM AUTO", 6, 4, 7},   {"KYOSHO FHSS", 73, 0, 0}, {"KYOSHO HYPE", 73, 1, 0},
-    {"KYOSHO2", 93, 0, 0},   {"RADIOLINK", 74, 0, 0}, {"TRAXXAS", 43, 0, 0},  {"LOSI", 89, 0, 0},
+    {"富斯 AFHDS 2A", 28, 0, 0},  {"富斯 AFHDS", 1, 0, 0},       {"Futaba S-FHSS", 21, 0, -50},
+    {"FrSky D8", 3, 0, 0},        {"FrSky D16", 15, 0, 0},       {"Spektrum DSM", 6, 4, 7},
+    {"京商 FHSS", 73, 0, 0},      {"京商 Hype", 73, 1, 0},       {"京商 KT-17", 93, 0, 0},
+    {"樂迪 RadioLink", 74, 0, 0}, {"Traxxas", 43, 0, 0},         {"Losi", 89, 0, 0},
 };
 const int MULTI_PROTO_COUNT = sizeof(MULTI_PROTOS) / sizeof(MULTI_PROTOS[0]);
 
@@ -88,5 +91,24 @@ const char *radio_kind_name(radio_kind_t k) {
             return "MULTI PPM";
         default:
             return "?";
+    }
+}
+
+int ui_lang_get(void) {
+    uint8_t v = 0;
+    nvs_handle_t h;
+    if (nvs_open(NVS_NS, NVS_READONLY, &h) == ESP_OK) {
+        nvs_get_u8(h, NVS_KEY_LANG, &v);
+        nvs_close(h);
+    }
+    return v == 1 ? 1 : 0;
+}
+
+void ui_lang_set(int lang) {
+    nvs_handle_t h;
+    if (nvs_open(NVS_NS, NVS_READWRITE, &h) == ESP_OK) {
+        nvs_set_u8(h, NVS_KEY_LANG, (uint8_t)lang);
+        nvs_commit(h);
+        nvs_close(h);
     }
 }
