@@ -3,6 +3,7 @@
 #include "sdkconfig.h"
 
 #include "control.h"
+#include "driver/rmt_tx.h"
 #include "driver/uart.h"
 #include "esp_log.h"
 #include "esp_timer.h"
@@ -22,18 +23,27 @@ static const char *TAG = "multi";
 #define MULTI_BAUD 100000
 #define MULTI_INVERT 0
 #define FRAME_PERIOD_MS 7
-#define BIND_MS 5000
+// 1: send plain PPM instead (dial 1-E, the module's own protocol table and
+// bind button). For telling the module's side from ours.
+#define MULTI_PPM 0
+#define PPM_CHANNELS 8
+#define PPM_FRAME_US 22500
+#define PPM_PULSE_US 300
+// MULTI's PPM range: 1100 us = -100 %, 1900 us = +100 %.
+#define PPM_CENTER_US 1500
+#define PPM_SPAN_US 400
+// The module only binds while the bind bit is set; some receivers take a while.
+#define BIND_MS 30000
 
 // The car's protocol, from the MULTI protocol list (Multiprotocol.h).
-// Futaba S-FHSS. No bind on the TX side: the receiver latches on to the
-// first S-FHSS transmitter it hears while its bind button is held.
-// OPTION is the CC2500 fine frequency tune, different for every module;
-// -50 is the seller's value for the IRX4+. If the link is unstable, find
-// the module's own value (MULTI docs/Frequency_Tuning.md).
-#define PROTOCOL 21
-#define SUB_PROTOCOL 0
+// FlySky AFHDS 2A, PWM_SBUS (as dial 2 of group 1): the car's FS-GT2E radio and its MXO-Racing
+// RXC42-AG receiver. Bind order for that receiver: both powered, start the
+// TX bind (wheel button N), then hold the receiver's button ~2 s.
+// (Futaba S-FHSS would be protocol 21, option -50: the IRX4+ fine tune.)
+#define PROTOCOL 28
+#define SUB_PROTOCOL 2
 #define RX_NUM 0
-#define OPTION -50
+#define OPTION 0
 #define LOW_POWER 0
 
 #define STEERING_CHANNEL 1
@@ -108,7 +118,60 @@ static void sender_task(void *arg) {
     }
 }
 
+static uint16_t to_ppm_us(float v) {
+    v = v < -1.0f ? -1.0f : (v > 1.0f ? 1.0f : v);
+    return (uint16_t)(PPM_CENTER_US + v * PPM_SPAN_US);
+}
+
+// Idle high, a 300 us low pulse before every channel: the time between
+// pulses is the channel value.
+static void ppm_task(void *arg) {
+    rmt_channel_handle_t tx;
+    const rmt_tx_channel_config_t cfg = {
+        .gpio_num = MULTI_PIN,
+        .clk_src = RMT_CLK_SRC_DEFAULT,
+        .resolution_hz = 1000000,
+        .mem_block_symbols = 48,
+        .trans_queue_depth = 2,
+    };
+    ESP_ERROR_CHECK(rmt_new_tx_channel(&cfg, &tx));
+    rmt_encoder_handle_t copy;
+    const rmt_copy_encoder_config_t ccfg = {};
+    ESP_ERROR_CHECK(rmt_new_copy_encoder(&ccfg, &copy));
+    ESP_ERROR_CHECK(rmt_enable(tx));
+    const rmt_transmit_config_t tcfg = {.loop_count = 0, .flags.eot_level = 1};
+    rmt_symbol_word_t sym[PPM_CHANNELS + 1];
+    uint16_t us[PPM_CHANNELS];
+    TickType_t wake = xTaskGetTickCount();
+    for (;;) {
+        int64_t now = esp_timer_get_time();
+        control_tick(now);
+        control_output_t o = control_output(now);
+        for (int c = 0; c < PPM_CHANNELS; c++) {
+            us[c] = PPM_CENTER_US;
+        }
+        us[STEERING_CHANNEL - 1] = to_ppm_us(STEERING_INVERT ? -o.steering : o.steering);
+        us[THROTTLE_CHANNEL - 1] = to_ppm_us(THROTTLE_INVERT ? -o.throttle : o.throttle);
+        uint32_t total = 0;
+        for (int c = 0; c < PPM_CHANNELS; c++) {
+            sym[c] = (rmt_symbol_word_t){.level0 = 0, .duration0 = PPM_PULSE_US, .level1 = 1,
+                                         .duration1 = us[c] - PPM_PULSE_US};
+            total += us[c];
+        }
+        // Sync gap, ending a little early so the next frame is queued in time.
+        sym[PPM_CHANNELS] = (rmt_symbol_word_t){.level0 = 0, .duration0 = PPM_PULSE_US, .level1 = 1,
+                                                .duration1 = PPM_FRAME_US - 1000 - total - PPM_PULSE_US};
+        ESP_ERROR_CHECK(rmt_transmit(tx, copy, sym, sizeof(sym), &tcfg));
+        vTaskDelayUntil(&wake, pdMS_TO_TICKS(PPM_FRAME_US / 1000));
+    }
+}
+
 void multi_start(void) {
+    if (MULTI_PPM) {
+        xTaskCreatePinnedToCore(ppm_task, "ppm", 4096, NULL, 9, NULL, 1);
+        ESP_LOGI(TAG, "PPM on GPIO%d, %d channels", MULTI_PIN, PPM_CHANNELS);
+        return;
+    }
     const uart_config_t cfg = {
         .baud_rate = MULTI_BAUD,
         .data_bits = UART_DATA_8_BITS,
