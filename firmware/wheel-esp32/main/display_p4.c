@@ -5,8 +5,10 @@
 // forward throttle heats amber -> red, reverse cools cyan -> blue, the speed
 // tier's ceiling is a thin ring with the unusable span in red.
 //
-// Touch: speed tier and emergency stop. Arming stays on the wheel's Start
-// button only, so a stray touch can never arm the car.
+// Touch: speed tier, emergency stop and the RADIO setup page (which radio,
+// MULTI protocol, bind, reversing). Arming stays on the wheel's Start
+// button only, so a stray touch can never arm the car; opening the setup
+// page disarms.
 
 #include "display.h"
 
@@ -56,6 +58,13 @@ static lv_obj_t *s_speed_btn[3];
 static lv_obj_t *s_gas_bar, *s_gas_label, *s_brake_bar, *s_brake_label;
 static lv_obj_t *s_tx_label, *s_rssi_label, *s_lq_label, *s_ch_label;
 static lv_obj_t *s_lq_seg[LQ_SEGS];
+static lv_obj_t *s_sub;
+
+// RADIO setup page.
+static lv_obj_t *s_setup;
+static lv_obj_t *s_kind_btn[RADIO_KINDS];
+static lv_obj_t *s_proto_btn[16];
+static lv_obj_t *s_rx_val, *s_opt_val, *s_rev_steer, *s_rev_thr, *s_bind_btn, *s_bind_label, *s_setup_hint;
 
 static lv_color_t hex(uint32_t c) {
     return lv_color_hex(c);
@@ -161,15 +170,92 @@ static void on_speed(lv_event_t *e) {
     ESP_LOGI(TAG, "speed %d (screen)", (int)s);
 }
 
+// Every setup change applies (and is saved) at once.
+static void edit(void (*fn)(radio_config_t *c, intptr_t arg), intptr_t arg) {
+    radio_config_t c = radio_config();
+    fn(&c, arg);
+    radio_set(&c);
+}
+
+static void set_kind(radio_config_t *c, intptr_t k) {
+    c->kind = (radio_kind_t)k;
+    multi_bind_cancel();
+}
+
+static void set_proto(radio_config_t *c, intptr_t i) {
+    if (c->proto != i) {
+        c->proto = (uint8_t)i;
+        c->option = MULTI_PROTOS[i].option;
+    }
+}
+
+static void add_rx(radio_config_t *c, intptr_t d) {
+    c->rx_num = (uint8_t)((c->rx_num + 16 + d) % 16);
+}
+
+static void add_option(radio_config_t *c, intptr_t d) {
+    int v = c->option + (int)d;
+    c->option = (int8_t)(v < -127 ? -127 : (v > 127 ? 127 : v));
+}
+
+static void flip_steer(radio_config_t *c, intptr_t unused) {
+    c->rev_steer[c->kind] = !c->rev_steer[c->kind];
+}
+
+static void flip_thr(radio_config_t *c, intptr_t unused) {
+    c->rev_thr[c->kind] = !c->rev_thr[c->kind];
+}
+
+static void on_kind(lv_event_t *e) {
+    edit(set_kind, (intptr_t)lv_event_get_user_data(e));
+}
+
+static void on_proto(lv_event_t *e) {
+    edit(set_proto, (intptr_t)lv_event_get_user_data(e));
+}
+
+static void on_rx(lv_event_t *e) {
+    edit(add_rx, (intptr_t)lv_event_get_user_data(e));
+}
+
+static void on_option(lv_event_t *e) {
+    edit(add_option, (intptr_t)lv_event_get_user_data(e));
+}
+
+static void on_rev_steer(lv_event_t *e) {
+    edit(flip_steer, 0);
+}
+
+static void on_rev_thr(lv_event_t *e) {
+    edit(flip_thr, 0);
+}
+
+static void on_bind(lv_event_t *e) {
+    if (multi_status().binding) {
+        multi_bind_cancel();
+    } else {
+        multi_bind();
+    }
+}
+
+static void on_setup_open(lv_event_t *e) {
+    control_disarm("RADIO");
+    lv_obj_remove_flag(s_setup, LV_OBJ_FLAG_HIDDEN);
+}
+
+static void on_setup_close(lv_event_t *e) {
+    lv_obj_add_flag(s_setup, LV_OBJ_FLAG_HIDDEN);
+}
+
 // ---- build -------------------------------------------------------------------
 
 static void build_top(lv_obj_t *scr) {
     lv_obj_t *title = label(scr, &lv_font_montserrat_24, C_TEXT, "RC CONTROL");
     lv_obj_set_style_text_letter_space(title, 2, 0);
     lv_obj_set_pos(title, M + 8, 10);
-    lv_obj_t *sub = label(scr, &lv_font_montserrat_12, C_DIM, "WHEEL  >  ELRS  >  CAR");
-    lv_obj_set_style_text_letter_space(sub, 2, 0);
-    lv_obj_set_pos(sub, M + 8, 40);
+    s_sub = label(scr, &lv_font_montserrat_12, C_DIM, "");
+    lv_obj_set_style_text_letter_space(s_sub, 2, 0);
+    lv_obj_set_pos(s_sub, M + 8, 40);
 
     s_pill = lv_obj_create(scr);
     lv_obj_remove_style_all(s_pill);
@@ -340,6 +426,92 @@ static void build_link(lv_obj_t *scr) {
 
     s_ch_label = label(p, &lv_font_montserrat_12, C_FAINT, "");
     lv_obj_set_pos(s_ch_label, 18, 106);
+
+    lv_obj_t *radio = button(p, SIDE_W - 18 - 150, 6, 150, 30, C_CYAN, &lv_font_montserrat_14,
+                             LV_SYMBOL_SETTINGS "  RADIO");
+    lv_obj_add_event_cb(radio, on_setup_open, LV_EVENT_CLICKED, NULL);
+}
+
+static lv_obj_t *setup_label(lv_obj_t *p, int x, int y, const char *text) {
+    lv_obj_t *l = label(p, &lv_font_montserrat_12, C_DIM, text);
+    lv_obj_set_style_text_letter_space(l, 3, 0);
+    lv_obj_set_pos(l, x, y);
+    return l;
+}
+
+// Full-screen page over the dashboard, hidden until RADIO is tapped.
+static void build_setup(void) {
+    lv_obj_t *p = lv_obj_create(lv_layer_top());
+    lv_obj_remove_style_all(p);
+    lv_obj_set_size(p, 1024, 600);
+    lv_obj_set_style_bg_color(p, hex(C_BG), 0);
+    lv_obj_set_style_bg_opa(p, LV_OPA_COVER, 0);
+    lv_obj_remove_flag(p, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(p, LV_OBJ_FLAG_HIDDEN);
+    s_setup = p;
+
+    lv_obj_t *title = label(p, &lv_font_montserrat_24, C_TEXT, "RADIO SETUP");
+    lv_obj_set_style_text_letter_space(title, 2, 0);
+    lv_obj_set_pos(title, M + 8, 18);
+    lv_obj_t *done = button(p, 1024 - M - 160, 12, 160, 48, C_GREEN, &lv_font_montserrat_20, "DONE");
+    lv_obj_add_event_cb(done, on_setup_close, LV_EVENT_CLICKED, NULL);
+
+    // Which radio transmits.
+    setup_label(p, M + 8, 80, "OUTPUT");
+    static const char *kinds[RADIO_KINDS] = {"ELRS", "MULTI  SERIAL", "MULTI  PPM (DIAL)"};
+    const int kw = (1024 - 2 * M - 16 - 2 * 12) / 3;
+    for (int i = 0; i < RADIO_KINDS; i++) {
+        s_kind_btn[i] = button(p, M + 8 + i * (kw + 12), 100, kw, 60, C_CYAN, &lv_font_montserrat_20, kinds[i]);
+        lv_obj_add_event_cb(s_kind_btn[i], on_kind, LV_EVENT_CLICKED, (void *)(intptr_t)i);
+    }
+
+    // MULTI serial protocol.
+    setup_label(p, M + 8, 180, "PROTOCOL  (MULTI SERIAL, MODULE DIAL AT 0)");
+    const int cols = 4, pw = (1024 - 2 * M - 16 - (cols - 1) * 12) / cols;
+    for (int i = 0; i < MULTI_PROTO_COUNT && i < 16; i++) {
+        int x = M + 8 + (i % cols) * (pw + 12), y = 200 + (i / cols) * 62;
+        s_proto_btn[i] = button(p, x, y, pw, 52, C_AMBER, &lv_font_montserrat_16, MULTI_PROTOS[i].name);
+        lv_obj_add_event_cb(s_proto_btn[i], on_proto, LV_EVENT_CLICKED, (void *)(intptr_t)i);
+    }
+
+    // RX number and fine tune.
+    const int ry = 410;
+    setup_label(p, M + 8, ry, "RX NUM");
+    lv_obj_t *b = button(p, M + 8, ry + 20, 56, 52, C_DIM, &lv_font_montserrat_24, "-");
+    lv_obj_add_event_cb(b, on_rx, LV_EVENT_CLICKED, (void *)(intptr_t)-1);
+    s_rx_val = label(p, &lv_font_montserrat_28, C_TEXT, "0");
+    lv_obj_set_pos(s_rx_val, M + 8 + 72, ry + 30);
+    b = button(p, M + 8 + 120, ry + 20, 56, 52, C_DIM, &lv_font_montserrat_24, "+");
+    lv_obj_add_event_cb(b, on_rx, LV_EVENT_CLICKED, (void *)(intptr_t)1);
+
+    const int ox = 230;
+    setup_label(p, ox, ry, "FINE TUNE");
+    static const int steps[4] = {-10, -1, 1, 10};
+    static const char *step_names[4] = {"-10", "-1", "+1", "+10"};
+    for (int i = 0; i < 4; i++) {
+        int x = ox + i * 66 + (i >= 2 ? 90 : 0);
+        b = button(p, x, ry + 20, 58, 52, C_DIM, &lv_font_montserrat_16, step_names[i]);
+        lv_obj_add_event_cb(b, on_option, LV_EVENT_CLICKED, (void *)(intptr_t)steps[i]);
+    }
+    s_opt_val = label(p, &lv_font_montserrat_28, C_TEXT, "0");
+    lv_obj_set_pos(s_opt_val, ox + 2 * 66 + 8, ry + 30);
+
+    // Reversing for the selected output.
+    const int vx = 680;
+    setup_label(p, vx, ry, "REVERSE");
+    s_rev_steer = button(p, vx, ry + 20, 150, 52, C_CYAN, &lv_font_montserrat_16, "STEER");
+    lv_obj_add_event_cb(s_rev_steer, on_rev_steer, LV_EVENT_CLICKED, NULL);
+    s_rev_thr = button(p, vx + 162, ry + 20, 150, 52, C_CYAN, &lv_font_montserrat_16, "THROTTLE");
+    lv_obj_add_event_cb(s_rev_thr, on_rev_thr, LV_EVENT_CLICKED, NULL);
+
+    // Bind (MULTI serial) and what to do for the selected output.
+    s_bind_btn = button(p, M + 8, 510, 300, 64, C_AMBER, &lv_font_montserrat_24, "BIND");
+    s_bind_label = lv_obj_get_child(s_bind_btn, 0);
+    lv_obj_add_event_cb(s_bind_btn, on_bind, LV_EVENT_CLICKED, NULL);
+    s_setup_hint = label(p, &lv_font_montserrat_14, C_DIM, "");
+    lv_obj_set_width(s_setup_hint, 1024 - 2 * M - 340);
+    lv_label_set_long_mode(s_setup_hint, LV_LABEL_LONG_WRAP);
+    lv_obj_set_pos(s_setup_hint, M + 8 + 320, 514);
 }
 
 void display_init(void) {
@@ -365,6 +537,7 @@ void display_init(void) {
     build_control(scr);
     build_pedals(scr);
     build_link(scr);
+    build_setup();
     bsp_display_unlock();
     ESP_LOGI(TAG, "7\" dashboard up");
 }
@@ -462,8 +635,38 @@ static void show_pedals(const display_state_t *s) {
 
 static void show_link(const display_state_t *s) {
     const crsf_status_t *r = &s->radio;
+    const radio_config_t *cfg = &s->cfg;
     char buf[64];
-    if (r->link) {
+    const char *proto = MULTI_PROTOS[cfg->proto].name;
+    if (cfg->kind == RADIO_ELRS) {
+        set_text(s_sub, "WHEEL  >  ELRS  >  CAR");
+    } else if (cfg->kind == RADIO_MULTI_SERIAL) {
+        snprintf(buf, sizeof(buf), "WHEEL  >  MULTI %s  >  CAR", proto);
+        set_text(s_sub, buf);
+    } else {
+        set_text(s_sub, "WHEEL  >  MULTI PPM (DIAL)  >  CAR");
+    }
+    if (cfg->kind != RADIO_ELRS) {
+        // MULTI: one way, no telemetry; show what is being sent.
+        if (s->multi.binding) {
+            snprintf(buf, sizeof(buf), "BINDING %ds", s->multi.bind_left_s);
+            set_text(s_tx_label, buf);
+            lv_obj_set_style_text_color(s_tx_label, hex(C_AMBER), 0);
+        } else {
+            set_text(s_tx_label, cfg->kind == RADIO_MULTI_SERIAL ? "MULTI" : "MULTI PPM");
+            lv_obj_set_style_text_color(s_tx_label, hex(C_CYAN), 0);
+        }
+        if (cfg->kind == RADIO_MULTI_SERIAL) {
+            snprintf(buf, sizeof(buf), "%s  RX %d", proto, cfg->rx_num);
+            set_text(s_rssi_label, buf);
+        } else {
+            set_text(s_rssi_label, "MODULE DIAL");
+        }
+        set_text(s_lq_label, "NO TELEM");
+        for (int i = 0; i < LQ_SEGS; i++) {
+            lv_obj_set_style_bg_color(s_lq_seg[i], hex(C_TRACK), 0);
+        }
+    } else if (r->link) {
         set_text(s_tx_label, "LINKED");
         lv_obj_set_style_text_color(s_tx_label, hex(C_GREEN), 0);
         snprintf(buf, sizeof(buf), "%d dBm", r->rssi);
@@ -476,16 +679,71 @@ static void show_link(const display_state_t *s) {
         set_text(s_rssi_label, "-- dBm");
         set_text(s_lq_label, "LQ --");
     }
-    int lit = r->link ? (r->lq * LQ_SEGS + 50) / 100 : 0;
-    uint32_t col = lq_color(r->lq);
-    for (int i = 0; i < LQ_SEGS; i++) {
-        lv_obj_set_style_bg_color(s_lq_seg[i], hex(i < lit ? col : C_TRACK), 0);
+    if (cfg->kind == RADIO_ELRS) {
+        int lit = r->link ? (r->lq * LQ_SEGS + 50) / 100 : 0;
+        uint32_t col = lq_color(r->lq);
+        for (int i = 0; i < LQ_SEGS; i++) {
+            lv_obj_set_style_bg_color(s_lq_seg[i], hex(i < lit ? col : C_TRACK), 0);
+        }
     }
     // Pulse widths the receiver puts out (988..2012 us around 1500).
     const control_output_t *o = &s->ctl.output;
     snprintf(buf, sizeof(buf), "CH1 STEER %d us     CH2 THROTTLE %d us", (int)lroundf(1500 + o->steering * 512),
              (int)lroundf(1500 + o->throttle * 512));
     set_text(s_ch_label, buf);
+}
+
+static void highlight(lv_obj_t *b, bool on, uint32_t color) {
+    lv_obj_set_style_border_color(b, hex(on ? color : C_EDGE), 0);
+    lv_obj_set_style_bg_color(b, hex(on ? color : C_DIM), 0);
+    lv_obj_set_style_bg_opa(b, on ? LV_OPA_40 : LV_OPA_10, 0);
+}
+
+static void show_setup(const display_state_t *s) {
+    if (lv_obj_has_flag(s_setup, LV_OBJ_FLAG_HIDDEN)) {
+        return;
+    }
+    const radio_config_t *c = &s->cfg;
+    char buf[160];
+    for (int i = 0; i < RADIO_KINDS; i++) {
+        highlight(s_kind_btn[i], c->kind == i, C_CYAN);
+    }
+    for (int i = 0; i < MULTI_PROTO_COUNT && i < 16; i++) {
+        highlight(s_proto_btn[i], c->proto == i, c->kind == RADIO_MULTI_SERIAL ? C_AMBER : C_DIM);
+    }
+    snprintf(buf, sizeof(buf), "%d", c->rx_num);
+    set_text(s_rx_val, buf);
+    snprintf(buf, sizeof(buf), "%d", c->option);
+    set_text(s_opt_val, buf);
+    highlight(s_rev_steer, c->rev_steer[c->kind], C_CYAN);
+    highlight(s_rev_thr, c->rev_thr[c->kind], C_CYAN);
+
+    bool serial = c->kind == RADIO_MULTI_SERIAL;
+    if (serial) {
+        lv_obj_remove_state(s_bind_btn, LV_STATE_DISABLED);
+        lv_obj_remove_flag(s_bind_btn, LV_OBJ_FLAG_HIDDEN);
+    } else {
+        lv_obj_add_flag(s_bind_btn, LV_OBJ_FLAG_HIDDEN);
+    }
+    if (s->multi.binding) {
+        snprintf(buf, sizeof(buf), "BINDING %ds", s->multi.bind_left_s);
+        set_text(s_bind_label, buf);
+        highlight(s_bind_btn, true, C_AMBER);
+    } else {
+        set_text(s_bind_label, "BIND");
+        highlight(s_bind_btn, false, C_AMBER);
+    }
+    const char *hint;
+    if (c->kind == RADIO_ELRS) {
+        hint = "ELRS module on GPIO28. The MULTI module gets no signal.";
+    } else if (serial) {
+        hint = "Module dial at 0. Tap BIND (or wheel N), then put the receiver into bind mode. "
+               "Some protocols (S-FHSS) bind from the receiver alone.";
+    } else {
+        hint = "Pick the protocol with the module dial (1-E, F = group). Bind: hold the module's button "
+               "while powering on, then put the receiver into bind mode.";
+    }
+    set_text(s_setup_hint, hint);
 }
 
 void display_show(const display_state_t *s) {
@@ -496,6 +754,7 @@ void display_show(const display_state_t *s) {
     show_drive(s);
     show_pedals(s);
     show_link(s);
+    show_setup(s);
     bsp_display_unlock();
 }
 

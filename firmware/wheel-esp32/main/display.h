@@ -11,6 +11,8 @@
 
 #include "control.h"
 #include "crsf.h"
+#include "multi.h"
+#include "radio.h"
 #include "wheel.h"
 
 typedef struct {
@@ -20,6 +22,8 @@ typedef struct {
     wheel_axes_t axes; // raw pedals and steering, valid when wheel is true
     control_view_t ctl;
     crsf_status_t radio;
+    multi_status_t multi;
+    radio_config_t cfg;
     int button; // last pressed button number while it is shown, else 0
 } display_state_t;
 

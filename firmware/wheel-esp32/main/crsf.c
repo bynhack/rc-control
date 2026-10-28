@@ -12,6 +12,7 @@
 #include "soc/uart_periph.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "radio.h"
 
 static const char *TAG = "crsf";
 
@@ -33,8 +34,6 @@ static const char *TAG = "crsf";
 // Same as the PC program's rc-control.toml.
 #define STEERING_CHANNEL 1
 #define THROTTLE_CHANNEL 2
-#define STEERING_INVERT 1
-#define THROTTLE_INVERT 0
 
 #define ADDR_TX_MODULE 0xEE
 #define ADDR_HANDSET 0xEA
@@ -175,6 +174,12 @@ static void sender_task(void *arg) {
     for (uint32_t n = 0;; n++) {
         int64_t now = esp_timer_get_time();
         control_tick(now);
+        radio_config_t rc = radio_config();
+        if (rc.kind != RADIO_ELRS) {
+            // Another radio is selected: stay silent, so only one car moves.
+            vTaskDelayUntil(&wake, pdMS_TO_TICKS(FRAME_PERIOD_MS));
+            continue;
+        }
         size_t len;
         if (n % PING_EVERY == 0) {
             len = frame(ping_body, sizeof(ping_body), out);
@@ -183,8 +188,8 @@ static void sender_task(void *arg) {
             for (int c = 0; c < CHANNELS; c++) {
                 ch[c] = CH_CENTER;
             }
-            ch[STEERING_CHANNEL - 1] = to_channel(STEERING_INVERT ? -o.steering : o.steering);
-            ch[THROTTLE_CHANNEL - 1] = to_channel(THROTTLE_INVERT ? -o.throttle : o.throttle);
+            ch[STEERING_CHANNEL - 1] = to_channel(rc.rev_steer[RADIO_ELRS] ? -o.steering : o.steering);
+            ch[THROTTLE_CHANNEL - 1] = to_channel(rc.rev_thr[RADIO_ELRS] ? -o.throttle : o.throttle);
             len = rc_frame(ch, out);
         }
 

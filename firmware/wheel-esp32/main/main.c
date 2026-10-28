@@ -30,6 +30,7 @@
 #include "crsf.h"
 #include "display.h"
 #include "multi.h"
+#include "radio.h"
 #include "wheel.h"
 
 static const char *TAG = "wheel";
@@ -104,7 +105,7 @@ static void handle_buttons(uint64_t now_b, int64_t now_us) {
             ESP_LOGI(TAG, "arm: %s", why ? why : "ARMED");
         }
     }
-    if (pressed & WHEEL_BUTTON(BTN_BIND)) {
+    if ((pressed & WHEEL_BUTTON(BTN_BIND)) && radio_config().kind == RADIO_MULTI_SERIAL) {
         multi_bind();
     }
     speed_t sp = control_speed();
@@ -270,6 +271,8 @@ static void ui_task(void *arg) {
             .rate = rate,
             .ctl = control_view(now),
             .radio = crsf_status(),
+            .multi = multi_status(),
+            .cfg = radio_config(),
             .button = (button && now - button_at < (int64_t)BUTTON_SHOW_MS * 1000) ? button : 0,
         };
         display_show(&ds);
@@ -285,10 +288,11 @@ static void ui_task(void *arg) {
         }
         control_view_t c = ds.ctl;
         crsf_status_t r = ds.radio;
-        printf("steer %+5.2f  gas %4.2f  brake %4.2f  | %s %s  out %+5.2f %+5.2f  | %s rssi %d lq %d  | %4.0f rpt/s%s\n",
+        printf("steer %+5.2f  gas %4.2f  brake %4.2f  | %s %s  out %+5.2f %+5.2f  | %s %s rssi %d lq %d  | %4.0f "
+               "rpt/s%s\n",
                a.steering, a.gas, a.brake, c.armed ? "ARMED" : "SAFE ", speed_name(c.speed), c.output.steering,
-               c.output.throttle, r.link ? "LINK" : (r.module ? "TX  " : "NOTX"), r.rssi, r.lq, rate,
-               fresh ? "" : "  STALE");
+               c.output.throttle, radio_kind_name(ds.cfg.kind), r.link ? "LINK" : (r.module ? "TX  " : "NOTX"),
+               r.rssi, r.lq, rate, fresh ? "" : "  STALE");
     }
 }
 
@@ -296,6 +300,7 @@ void app_main(void) {
     ESP_LOGI(TAG, "wheel USB host test: plug the wheel base into the ESP32-OTG port");
     s_device_events = xQueueCreate(8, sizeof(device_event_t));
     control_init((int64_t)HEARTBEAT_TIMEOUT_MS * 1000);
+    radio_init();
     crsf_start();
     multi_start();
     display_init();
