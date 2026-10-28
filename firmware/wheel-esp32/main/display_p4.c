@@ -1,9 +1,8 @@
 // Dashboard for the Waveshare ESP32-P4 7B board: 1024x600 touch panel,
 // driven through the board support package's LVGL adapter.
 //
-// The main screen is only an instrument cluster: power gauge on the left
-// (the gear's cap shown as a red band), modelled speed on the right, the
-// gear in the middle and one line of notices. Everything else (radio
+// The main screen is only an instrument cluster (dash_p4.c: several looks,
+// swipe to switch) and one line of notices. Everything else (radio
 // choice, link, pedals, wheel) sits behind the settings button, on the
 // setup page's two tabs. Same palette as the PC program (src/gui/theme.rs).
 //
@@ -24,49 +23,18 @@
 #include "bsp/esp-bsp.h"
 #include "esp_log.h"
 #include "lvgl.h"
-
-// Chinese subsets of Noto Sans SC (Simplified and Traditional), falling back to Montserrat
-// for Latin, digits and symbols. Regenerate with fonts/gen_fonts.sh after
-// changing any Chinese text here.
-LV_FONT_DECLARE(cjk_14);
-LV_FONT_DECLARE(cjk_16);
-LV_FONT_DECLARE(cjk_20);
-LV_FONT_DECLARE(cjk_24);
-LV_FONT_DECLARE(cjk_32);
-LV_FONT_DECLARE(gear_160);
+#include "dash_p4.h"
+#include "ui_p4.h"
 
 static const char *TAG = "display";
-
-// ---- palette (src/gui/theme.rs) ---------------------------------------------
-#define C_BG 0x070a0f
-#define C_PANEL 0x0d1219
-#define C_EDGE 0x1d2633
-#define C_TRACK 0x18202c
-#define C_TEXT 0xe8eef6
-#define C_DIM 0x7c899a
-#define C_FAINT 0x424d5c
-#define C_CYAN 0x00d4ff
-#define C_BLUE 0x4c6cff
-#define C_AMBER 0xffb224
-#define C_RED 0xff3a34
-#define C_GREEN 0x2ee88a
 
 // ---- layout (1024 x 600) -----------------------------------------------------
 #define TOP_H 56
 #define M 16
-#define GAUGE_D 360 // arc diameter; the scale with labels is 40 wider
-#define GAUGE_CY 300
-#define GAUGE_L_CX (M + 200)
-#define GAUGE_R_CX (1024 - M - 200)
 #define MID_CX 512
 #define LQ_SEGS 10
 
-typedef struct {
-    lv_obj_t *arc, *red, *value;
-} gauge_t;
-
-static gauge_t s_power, s_speed;
-static lv_obj_t *s_gear, *s_gear_cell[5], *s_notice;
+static lv_obj_t *s_notice;
 // Status tab.
 static lv_obj_t *s_sub, *s_wheel_label, *s_button_label, *s_steer_bar;
 static lv_obj_t *s_gas_bar, *s_gas_label, *s_brake_bar, *s_brake_label;
@@ -82,15 +50,6 @@ static lv_obj_t *s_rx_val, *s_opt_val, *s_rev_steer, *s_rev_thr, *s_bind_btn, *s
 // ---- text: Simplified (default) and Traditional Chinese -----------------------
 typedef enum { LANG_SC, LANG_TC } lang_t;
 
-enum {
-    T_NO_WHEEL, T_ARMED, T_ESTOP, T_SAFE, T_DRIVE, T_THR_PCT, T_LEFT, T_RIGHT, T_STEER_FMT, T_STEER_ZERO,
-    T_CONTROL, T_HINT, T_PEDALS, T_GAS, T_BRAKE, T_LINK, T_NO_TX, T_SETUP_BTN, T_SETUP_TITLE, T_DONE,
-    T_OUTPUT, T_KIND_SERIAL, T_KIND_PPM, T_PROTO_TITLE, T_RX_NUM, T_FINE, T_REVERSE, T_REV_STEER, T_REV_THR,
-    T_BIND, T_BINDING_FMT, T_UNKNOWN_FMT, T_PLUG, T_BUTTON_FMT, T_LIMIT_FMT, T_SUB_ELRS, T_SUB_MULTI_FMT,
-    T_SUB_PPM, T_TX_SERIAL, T_TX_PPM, T_RX_FMT, T_DIAL, T_NO_TELEM, T_LINKED, T_CAR_OFF, T_CH_FMT,
-    T_HINT_ELRS, T_HINT_SERIAL, T_HINT_PPM, T_LANG, T_POWER, T_SPEED, T_ENGINE_ON, T_ENGINE_OFF, T_PRESS_START,
-    T_N_STOP, T_N_PEDALS, T_N_ENGINE, T_STATUS, T_WHEEL, T_NO_LINK, T_COUNT
-};
 
 static const char *const TEXT[T_COUNT][2] = {
     [T_NO_WHEEL] = {"未接方向盘", "未接方向盤"},
@@ -160,6 +119,9 @@ static const char *const TEXT[T_COUNT][2] = {
     [T_STATUS] = {"状态信息", "狀態資訊"},
     [T_WHEEL] = {"方向盘", "方向盤"},
     [T_NO_LINK] = {"车未连线", "車未連線"},
+    [T_DASH_SPORT] = {"运动", "運動"},
+    [T_DASH_CLASSIC] = {"经典", "經典"},
+    [T_DASH_RACE] = {"赛道", "賽道"},
 };
 
 static lang_t s_lang = LANG_SC;
@@ -169,7 +131,7 @@ static const char *tr(int id) {
 }
 
 // Labels with fixed text, re-set when the language changes.
-#define MAX_TLABELS 48
+#define MAX_TLABELS 64
 static struct {
     lv_obj_t *obj;
     int id;
@@ -186,14 +148,12 @@ static lv_obj_t *track(lv_obj_t *l, int id) {
     return l;
 }
 
-static lv_color_t hex(uint32_t c) {
-    return lv_color_hex(c);
+const char *ui_tr(int id) {
+    return tr(id);
 }
 
-static void set_text(lv_obj_t *l, const char *t) {
-    if (strcmp(lv_label_get_text(l), t) != 0) {
-        lv_label_set_text(l, t);
-    }
+lv_obj_t *ui_track(lv_obj_t *l, int id) {
+    return track(l, id);
 }
 
 static lv_obj_t *panel(lv_obj_t *parent, int x, int y, int w, int h) {
@@ -210,37 +170,12 @@ static lv_obj_t *panel(lv_obj_t *parent, int x, int y, int w, int h) {
     return o;
 }
 
-static lv_obj_t *label(lv_obj_t *parent, const lv_font_t *font, uint32_t color, const char *text) {
-    lv_obj_t *l = lv_label_create(parent);
-    lv_obj_set_style_text_font(l, font, 0);
-    lv_obj_set_style_text_color(l, hex(color), 0);
-    lv_label_set_text(l, text);
-    return l;
-}
 
 // Uppercase section title with wide tracking, like the PC panels.
 static void section_title(lv_obj_t *parent, int id) {
     lv_obj_t *l = track(label(parent, &cjk_14, C_DIM, ""), id);
     lv_obj_set_style_text_letter_space(l, 2, 0);
     lv_obj_set_pos(l, 18, 12);
-}
-
-static lv_obj_t *arc(lv_obj_t *parent, int d, int width, uint32_t track, lv_opa_t track_opa) {
-    lv_obj_t *a = lv_arc_create(parent);
-    lv_obj_set_size(a, d, d);
-    lv_arc_set_bg_angles(a, 135, 45);
-    lv_arc_set_range(a, -100, 100);
-    lv_arc_set_mode(a, LV_ARC_MODE_SYMMETRICAL);
-    lv_arc_set_value(a, 0);
-    lv_obj_remove_style(a, NULL, LV_PART_KNOB);
-    lv_obj_remove_flag(a, LV_OBJ_FLAG_CLICKABLE);
-    lv_obj_set_style_arc_width(a, width, LV_PART_MAIN);
-    lv_obj_set_style_arc_width(a, width, LV_PART_INDICATOR);
-    lv_obj_set_style_arc_color(a, hex(track), LV_PART_MAIN);
-    lv_obj_set_style_arc_opa(a, track_opa, LV_PART_MAIN);
-    lv_obj_set_style_arc_rounded(a, false, LV_PART_MAIN);
-    lv_obj_set_style_arc_rounded(a, false, LV_PART_INDICATOR);
-    return a;
 }
 
 static lv_obj_t *hbar(lv_obj_t *parent, int x, int y, int w, int h, int min, uint32_t color) {
@@ -259,15 +194,6 @@ static lv_obj_t *hbar(lv_obj_t *parent, int x, int y, int w, int h, int min, uin
     return b;
 }
 
-// Forward amber -> red, reverse cyan -> blue (theme::throttle_color).
-static lv_color_t throttle_color(float v) {
-    float t = fabsf(v);
-    if (t > 1.0f) {
-        t = 1.0f;
-    }
-    lv_opa_t mix = (lv_opa_t)(t * 255.0f);
-    return v >= 0 ? lv_color_mix(hex(C_RED), hex(C_AMBER), mix) : lv_color_mix(hex(C_BLUE), hex(C_CYAN), mix);
-}
 
 static uint32_t lq_color(int lq) {
     return lq >= 70 ? C_GREEN : (lq >= 40 ? C_AMBER : C_RED);
@@ -403,74 +329,7 @@ static void build_top(lv_obj_t *scr) {
     lv_obj_add_event_cb(setup, on_setup_open, LV_EVENT_CLICKED, NULL);
 }
 
-static gauge_t build_gauge(lv_obj_t *scr, int cx, int caption_id, bool redline) {
-    gauge_t g = {0};
-    const int sd = GAUGE_D + 40;
-    lv_obj_t *sc = lv_scale_create(scr);
-    lv_obj_set_size(sc, sd, sd);
-    lv_obj_set_pos(sc, cx - sd / 2, GAUGE_CY - sd / 2);
-    lv_scale_set_mode(sc, LV_SCALE_MODE_ROUND_OUTER);
-    lv_scale_set_range(sc, 0, 100);
-    lv_scale_set_angle_range(sc, 270);
-    lv_scale_set_rotation(sc, 135);
-    lv_scale_set_total_tick_count(sc, 21);
-    lv_scale_set_major_tick_every(sc, 2);
-    lv_scale_set_label_show(sc, true);
-    lv_obj_set_style_arc_width(sc, 0, LV_PART_MAIN);
-    lv_obj_set_style_length(sc, 6, LV_PART_ITEMS);
-    lv_obj_set_style_length(sc, 12, LV_PART_INDICATOR);
-    lv_obj_set_style_line_color(sc, hex(C_FAINT), LV_PART_ITEMS);
-    lv_obj_set_style_line_color(sc, hex(C_DIM), LV_PART_INDICATOR);
-    lv_obj_set_style_line_width(sc, 1, LV_PART_ITEMS);
-    lv_obj_set_style_line_width(sc, 2, LV_PART_INDICATOR);
-    lv_obj_set_style_text_color(sc, hex(C_DIM), LV_PART_INDICATOR);
-    lv_obj_set_style_text_font(sc, &lv_font_montserrat_14, LV_PART_INDICATOR);
-
-    if (redline) {
-        // Beyond the gear's cap: a red band just inside the ticks.
-        g.red = arc(scr, GAUGE_D + 18, 5, C_RED, LV_OPA_80);
-        lv_obj_set_pos(g.red, cx - (GAUGE_D + 18) / 2, GAUGE_CY - (GAUGE_D + 18) / 2);
-        lv_obj_remove_style(g.red, NULL, LV_PART_INDICATOR);
-    }
-    g.arc = arc(scr, GAUGE_D, 20, C_TRACK, LV_OPA_COVER);
-    lv_arc_set_range(g.arc, 0, 100);
-    lv_arc_set_mode(g.arc, LV_ARC_MODE_NORMAL);
-    lv_obj_set_pos(g.arc, cx - GAUGE_D / 2, GAUGE_CY - GAUGE_D / 2);
-
-    g.value = label(scr, &lv_font_montserrat_48, C_TEXT, "0");
-    lv_obj_set_width(g.value, 160);
-    lv_obj_set_style_text_align(g.value, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_set_pos(g.value, cx - 80, GAUGE_CY - 34);
-    lv_obj_t *cap = track(label(scr, &cjk_20, C_DIM, ""), caption_id);
-    lv_obj_set_width(cap, 220);
-    lv_obj_set_style_text_align(cap, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_set_pos(cap, cx - 110, GAUGE_CY + 30);
-    return g;
-}
-
 static void build_center(lv_obj_t *scr) {
-    s_gear = label(scr, &gear_160, C_TEXT, "N");
-    lv_obj_set_width(s_gear, 200);
-    lv_obj_set_style_text_align(s_gear, LV_TEXT_ALIGN_CENTER, 0);
-    lv_obj_set_pos(s_gear, MID_CX - 100, 150);
-
-    static const char *names[5] = {"R", "N", "1", "2", "3"};
-    const int cw = 32, gap = 6, x0 = MID_CX - (5 * cw + 4 * gap) / 2;
-    for (int i = 0; i < 5; i++) {
-        lv_obj_t *c = lv_obj_create(scr);
-        lv_obj_remove_style_all(c);
-        lv_obj_set_size(c, cw, 36);
-        lv_obj_set_pos(c, x0 + i * (cw + gap), 380);
-        lv_obj_set_style_radius(c, 6, 0);
-        lv_obj_set_style_border_width(c, 2, 0);
-        lv_obj_set_style_border_color(c, hex(C_EDGE), 0);
-        lv_obj_set_style_bg_opa(c, LV_OPA_20, 0);
-        lv_obj_remove_flag(c, LV_OBJ_FLAG_SCROLLABLE);
-        lv_obj_t *l = label(c, &lv_font_montserrat_20, C_DIM, names[i]);
-        lv_obj_center(l);
-        s_gear_cell[i] = c;
-    }
-
     s_notice = label(scr, &cjk_24, C_AMBER, "");
     lv_obj_set_width(s_notice, 600);
     lv_obj_set_style_text_align(s_notice, LV_TEXT_ALIGN_CENTER, 0);
@@ -661,10 +520,9 @@ void display_init(void) {
     lv_obj_set_style_bg_color(scr, hex(C_BG), 0);
     lv_obj_set_style_bg_opa(scr, LV_OPA_COVER, 0);
     lv_obj_remove_flag(scr, LV_OBJ_FLAG_SCROLLABLE);
-    build_top(scr);
-    s_power = build_gauge(scr, GAUGE_L_CX, T_POWER, true);
-    s_speed = build_gauge(scr, GAUGE_R_CX, T_SPEED, false);
+    dash_build(scr);
     build_center(scr);
+    build_top(scr);
     build_setup();
     bsp_display_unlock();
     ESP_LOGI(TAG, "7\" dashboard up");
@@ -706,16 +564,6 @@ static void show_status(const display_state_t *s) {
     set_text(s_brake_label, buf);
 }
 
-static void show_gauge(const gauge_t *g, float v, lv_color_t color, bool on) {
-    char buf[16];
-    int pct = (int)lroundf(fabsf(v) * 100.0f);
-    lv_arc_set_value(g->arc, on ? pct : 0);
-    lv_obj_set_style_arc_color(g->arc, color, LV_PART_INDICATOR);
-    snprintf(buf, sizeof(buf), "%d", on ? pct : 0);
-    set_text(g->value, buf);
-    lv_obj_set_style_text_color(g->value, hex(on ? C_TEXT : C_FAINT), 0);
-}
-
 static int notice_id(const char *n) {
     if (n == NULL) {
         return -1;
@@ -737,34 +585,17 @@ static int notice_id(const char *n) {
 
 static void show_drive(const display_state_t *s) {
     const control_view_t *c = &s->ctl;
-    bool on = c->engine && s->wheel;
     float thr = c->output.throttle;
-    // Power: what drives the wheels; braking shows on the lamp instead.
-    float power = (c->braking || thr * c->speed < 0) ? 0.0f : thr;
-    show_gauge(&s_power, power, throttle_color(power), on);
-    show_gauge(&s_speed, c->speed, hex(c->speed < 0 ? C_BLUE : C_CYAN), on);
-
-    // The gear's cap: red from there to 100 %.
-    float cap = c->gear == GEAR_N ? 0.0f : c->gear_max;
-    if (cap >= 0.999f || !on) {
-        lv_obj_add_flag(s_power.red, LV_OBJ_FLAG_HIDDEN);
-    } else {
-        lv_obj_remove_flag(s_power.red, LV_OBJ_FLAG_HIDDEN);
-        int start = 135 + (int)lroundf(270.0f * cap);
-        lv_arc_set_bg_angles(s_power.red, start % 360, 45);
-    }
-
-    static const char *names[5] = {"R", "N", "1", "2", "3"};
-    int gi = (int)c->gear - GEAR_R;
-    set_text(s_gear, names[gi]);
-    uint32_t gc = !on ? C_FAINT : (c->gear == GEAR_R ? C_AMBER : (c->gear == GEAR_N ? C_TEXT : C_GREEN));
-    lv_obj_set_style_text_color(s_gear, hex(gc), 0);
-    for (int i = 0; i < 5; i++) {
-        bool cur = i == gi && on;
-        lv_obj_set_style_border_color(s_gear_cell[i], hex(cur ? gc : C_EDGE), 0);
-        lv_obj_set_style_bg_color(s_gear_cell[i], hex(cur ? gc : C_PANEL), 0);
-        lv_obj_set_style_text_color(lv_obj_get_child(s_gear_cell[i], 0), hex(cur ? C_TEXT : C_FAINT), 0);
-    }
+    const dash_values_t v = {
+        .on = c->engine && s->wheel,
+        .gear = c->gear,
+        // Power: what drives the wheels; braking doesn't count.
+        .power = (c->braking || thr * c->speed < 0) ? 0.0f : fabsf(thr),
+        .throttle = thr,
+        .speed = c->speed,
+        .cap = c->gear == GEAR_N ? 0.0f : c->gear_max,
+    };
+    dash_show(&v);
 
     // One line for whatever needs the driver's attention, most urgent first.
     int n = notice_id(c->notice);
@@ -900,7 +731,7 @@ static void show_setup(const display_state_t *s) {
 }
 
 void display_show(const display_state_t *s) {
-    if (s_gear == NULL || !bsp_display_lock(20)) {
+    if (s_notice == NULL || !bsp_display_lock(20)) {
         return;
     }
     show_drive(s);

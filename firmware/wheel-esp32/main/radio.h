@@ -43,3 +43,7 @@ const char *radio_kind_name(radio_kind_t k);
 // (the default), 1 = Traditional.
 int ui_lang_get(void);
 void ui_lang_set(int lang);
+
+// Which instrument cluster the main screen shows (dash_p4.c), saved.
+int ui_dash_get(void);
+void ui_dash_set(int dash);

@@ -10,6 +10,7 @@ static const char *TAG = "radio";
 #define NVS_NS "radio"
 #define NVS_KEY "cfg"
 #define NVS_KEY_LANG "lang"
+#define NVS_KEY_DASH "dash"
 // Bump when radio_config_t changes, so an old blob is ignored.
 #define CFG_VERSION 1
 
@@ -108,6 +109,25 @@ void ui_lang_set(int lang) {
     nvs_handle_t h;
     if (nvs_open(NVS_NS, NVS_READWRITE, &h) == ESP_OK) {
         nvs_set_u8(h, NVS_KEY_LANG, (uint8_t)lang);
+        nvs_commit(h);
+        nvs_close(h);
+    }
+}
+
+int ui_dash_get(void) {
+    uint8_t v = 0;
+    nvs_handle_t h;
+    if (nvs_open(NVS_NS, NVS_READONLY, &h) == ESP_OK) {
+        nvs_get_u8(h, NVS_KEY_DASH, &v);
+        nvs_close(h);
+    }
+    return v;
+}
+
+void ui_dash_set(int dash) {
+    nvs_handle_t h;
+    if (nvs_open(NVS_NS, NVS_READWRITE, &h) == ESP_OK) {
+        nvs_set_u8(h, NVS_KEY_DASH, (uint8_t)dash);
         nvs_commit(h);
         nvs_close(h);
     }
