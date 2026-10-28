@@ -23,9 +23,9 @@ static const char *TAG = "multi";
 #define MULTI_BAUD 100000
 #define MULTI_INVERT 0
 #define FRAME_PERIOD_MS 7
-// 1: send plain PPM instead (dial 1-E, the module's own protocol table and
+// 1: send plain PPM (dial 1-E, the module's own protocol table and
 // bind button). For telling the module's side from ours.
-#define MULTI_PPM 0
+#define MULTI_PPM 1
 #define PPM_CHANNELS 8
 #define PPM_FRAME_US 22500
 #define PPM_PULSE_US 300
