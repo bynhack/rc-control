@@ -147,8 +147,9 @@ static void set_label(lv_obj_t *l, const char *text, uint32_t color) {
     lv_obj_set_style_text_color(l, lv_color_hex(color), 0);
 }
 
-static const char *speed_name(speed_t s) {
-    return s == SPEED_HIGH ? "SPEED  H" : (s == SPEED_MID ? "SPEED  M" : "SPEED  L");
+static const char *gear_name(gear_t g) {
+    static const char *names[] = {"GEAR  R", "GEAR  N", "GEAR  1", "GEAR  2", "GEAR  3"};
+    return names[g - GEAR_R];
 }
 
 void display_show(const display_state_t *s) {
@@ -166,30 +167,30 @@ void display_show(const display_state_t *s) {
         } else {
             set_label(s_status, "NO WHEEL", COL_WARN);
         }
-    } else if (c->armed) {
-        set_label(s_status, "ARMED", COL_OK);
-    } else if (strcmp(c->disarm_reason, "E-STOP") == 0) {
+    } else if (c->engine) {
+        set_label(s_status, "ENGINE ON", COL_OK);
+    } else if (strcmp(c->off_reason, "E-STOP") == 0) {
         set_label(s_status, "E-STOP", COL_STOP);
     } else {
-        set_label(s_status, "SAFE", COL_WARN);
+        set_label(s_status, "ENGINE OFF", COL_WARN);
     }
 
-    // Ring and number: the throttle actually sent when armed, else the
-    // pedal demand, dimmed, so the pedals can still be checked.
-    float thr = c->armed ? c->output.throttle : c->throttle_demand;
+    // Ring and number: the throttle actually sent with the engine on, else
+    // the pedals, dimmed, so they can still be checked.
+    float thr = c->engine ? c->output.throttle : c->gas - c->brake;
     int pct = (int)lroundf(thr * 100.0f);
-    uint32_t ring = !c->armed ? COL_DIM : (pct >= 0 ? COL_FWD : COL_REV);
+    uint32_t ring = !c->engine ? COL_DIM : (pct >= 0 ? COL_FWD : COL_REV);
     lv_arc_set_value(s_throttle_arc, s->wheel ? pct : 0);
     lv_obj_set_style_arc_color(s_throttle_arc, lv_color_hex(ring), LV_PART_INDICATOR);
     lv_arc_set_value(s_steer_arc, s->wheel ? (int)lroundf(c->steering * 100.0f) : 0);
     if (s->wheel) {
         snprintf(buf, sizeof(buf), "%+d", pct);
-        set_label(s_value, pct == 0 ? "0" : buf, c->armed ? COL_TEXT : COL_DIM);
+        set_label(s_value, pct == 0 ? "0" : buf, c->engine ? COL_TEXT : COL_DIM);
     } else {
         set_label(s_value, "--", COL_DIM);
     }
 
-    set_label(s_caption, speed_name(c->speed), COL_DIM);
+    set_label(s_caption, gear_name(c->gear), COL_DIM);
 
     if (s->button) {
         snprintf(buf, sizeof(buf), "BTN %d", s->button);

@@ -10,8 +10,8 @@
 //   UART0 (TX0)     -> log, 115200; CH340C port or a 3.3 V-safe USB-TTL
 //
 // Wheel buttons (MOZA R5 numbering, read off the log):
-//   Start (36)          arm / disarm (arming needs the pedals released)
-//   right / left paddle speed tier up / down (14 / 13)
+//   Start (36)          ignition on / off (starts in neutral, pedals released)
+//   right / left paddle gear up / down (14 / 13): R N 1 2 3
 //   P (32)              emergency stop
 //   N (19)              bind the MULTI module
 
@@ -49,8 +49,8 @@ static const char *TAG = "wheel";
 #define BUTTON_SHOW_MS 2000
 
 #define BTN_ARM 36
-#define BTN_SPEED_UP 14
-#define BTN_SPEED_DOWN 13
+#define BTN_GEAR_UP 14
+#define BTN_GEAR_DOWN 13
 #define BTN_ESTOP 32
 // N: binds the MULTI module (multi.h)
 #define BTN_BIND 19
@@ -71,8 +71,9 @@ static uint16_t s_vid, s_pid; // 0 while nothing is attached
 static int s_last_button;
 static int64_t s_last_button_at_us;
 
-static const char *speed_name(speed_t s) {
-    return s == SPEED_HIGH ? "H" : (s == SPEED_MID ? "M" : "L");
+static const char *gear_name(gear_t g) {
+    static const char *names[] = {"R", "N", "1", "2", "3"};
+    return names[g - GEAR_R];
 }
 
 // Button actions fire on the press edge.
@@ -97,24 +98,22 @@ static void handle_buttons(uint64_t now_b, int64_t now_us) {
         return;
     }
     if (pressed & WHEEL_BUTTON(BTN_ARM)) {
-        if (control_view(now_us).armed) {
-            control_disarm("DISARMED");
-            ESP_LOGI(TAG, "disarmed");
+        if (control_view(now_us).engine) {
+            control_ignition_off("OFF");
+            ESP_LOGI(TAG, "engine off");
         } else {
-            const char *why = control_arm(now_us);
-            ESP_LOGI(TAG, "arm: %s", why ? why : "ARMED");
+            const char *why = control_ignition_on(now_us);
+            ESP_LOGI(TAG, "ignition: %s", why ? why : "ON");
         }
     }
     if ((pressed & WHEEL_BUTTON(BTN_BIND)) && radio_config().kind == RADIO_MULTI_SERIAL) {
         multi_bind();
     }
-    speed_t sp = control_speed();
-    if ((pressed & WHEEL_BUTTON(BTN_SPEED_UP)) && sp < SPEED_HIGH) {
-        control_set_speed(sp + 1);
-        ESP_LOGI(TAG, "speed %s", speed_name(sp + 1));
-    } else if ((pressed & WHEEL_BUTTON(BTN_SPEED_DOWN)) && sp > SPEED_LOW) {
-        control_set_speed(sp - 1);
-        ESP_LOGI(TAG, "speed %s", speed_name(sp - 1));
+    for (int i = 0; i < 2; i++) {
+        if (pressed & WHEEL_BUTTON(i ? BTN_GEAR_DOWN : BTN_GEAR_UP)) {
+            const char *why = control_shift(i ? -1 : 1, now_us);
+            ESP_LOGI(TAG, "gear %s%s%s", gear_name(control_view(now_us).gear), why ? "  refused: " : "", why ? why : "");
+        }
     }
 }
 
@@ -164,7 +163,7 @@ static void interface_callback(hid_host_device_handle_t handle, const hid_host_i
             }
             portEXIT_CRITICAL(&s_lock);
             if (ok) {
-                control_input(axes.steering, axes.throttle, now);
+                control_input(axes.steering, axes.gas, axes.brake, now);
                 handle_buttons(axes.buttons, now);
             }
             if (n <= RAW_REPORTS_TO_DUMP) {
@@ -290,7 +289,7 @@ static void ui_task(void *arg) {
         crsf_status_t r = ds.radio;
         printf("steer %+5.2f  gas %4.2f  brake %4.2f  | %s %s  out %+5.2f %+5.2f  | %s %s rssi %d lq %d  | %4.0f "
                "rpt/s%s\n",
-               a.steering, a.gas, a.brake, c.armed ? "ARMED" : "SAFE ", speed_name(c.speed), c.output.steering,
+               a.steering, a.gas, a.brake, c.engine ? "ON " : "OFF", gear_name(c.gear), c.output.steering,
                c.output.throttle, radio_kind_name(ds.cfg.kind), r.link ? "LINK" : (r.module ? "TX  " : "NOTX"),
                r.rssi, r.lq, rate, fresh ? "" : "  STALE");
     }

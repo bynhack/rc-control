@@ -1,14 +1,14 @@
 // Dashboard for the Waveshare ESP32-P4 7B board: 1024x600 touch panel,
 // driven through the board support package's LVGL adapter.
 //
-// Same palette and gauge language as the PC program (src/gui/theme.rs):
-// forward throttle heats amber -> red, reverse cools cyan -> blue, the speed
-// tier's ceiling is a thin ring with the unusable span in red.
+// Laid out like a car's instrument cluster: power gauge on the left (the
+// gear's cap shown as a red line), modelled speed on the right, the gear in
+// the middle, warning lamps, pedals and the radio link along the bottom.
+// Same palette as the PC program (src/gui/theme.rs).
 //
-// Touch: speed tier, emergency stop and the RADIO setup page (which radio,
-// MULTI protocol, bind, reversing). Arming stays on the wheel's Start
-// button only, so a stray touch can never arm the car; opening the setup
-// page disarms.
+// Touch: emergency stop and the setup page (which radio, MULTI protocol,
+// bind, reversing, language). Ignition stays on the wheel's Start button
+// only, so a stray touch can never start the car; opening setup stops it.
 
 #include "display.h"
 
@@ -33,6 +33,7 @@ LV_FONT_DECLARE(cjk_16);
 LV_FONT_DECLARE(cjk_20);
 LV_FONT_DECLARE(cjk_24);
 LV_FONT_DECLARE(cjk_32);
+LV_FONT_DECLARE(gear_160);
 
 static const char *TAG = "display";
 
@@ -51,23 +52,30 @@ static const char *TAG = "display";
 #define C_GREEN 0x2ee88a
 
 // ---- layout (1024 x 600) -----------------------------------------------------
-#define TOP_H 64
-#define M 16                     // outer margin and gap
-#define DRIVE_W 600              // left panel
-#define SIDE_X (M + DRIVE_W + M) // right column
-#define SIDE_W (1024 - SIDE_X - M)
-#define GAUGE_D 380 // throttle arc
-#define LQ_SEGS 12
+#define TOP_H 56
+#define M 16
+#define GAUGE_D 300 // arc diameter; the scale with labels is 40 wider
+#define GAUGE_CY 240
+#define GAUGE_L_CX (M + 170)
+#define GAUGE_R_CX (1024 - M - 170)
+#define MID_CX 512
+#define BOTTOM_Y 430
+#define LQ_SEGS 10
 
-static lv_obj_t *s_pill, *s_pill_label, *s_hint;
+enum { LAMP_ENGINE, LAMP_BRAKE, LAMP_REVERSE, LAMP_SIGNAL, LAMP_ESTOP, LAMPS };
+
+typedef struct {
+    lv_obj_t *arc, *red, *value;
+} gauge_t;
+
+static lv_obj_t *s_pill, *s_pill_label, *s_sub;
 static lv_obj_t *s_wheel_label, *s_button_label;
-static lv_obj_t *s_arc, *s_lim_pos, *s_lim_neg, *s_value, *s_limit_label;
-static lv_obj_t *s_steer_bar, *s_steer_label;
-static lv_obj_t *s_speed_btn[3];
+static gauge_t s_power, s_speed;
+static lv_obj_t *s_gear, *s_gear_cell[5], *s_notice, *s_steer_bar, *s_hint;
+static lv_obj_t *s_lamp[LAMPS];
 static lv_obj_t *s_gas_bar, *s_gas_label, *s_brake_bar, *s_brake_label;
 static lv_obj_t *s_tx_label, *s_rssi_label, *s_lq_label, *s_ch_label;
 static lv_obj_t *s_lq_seg[LQ_SEGS];
-static lv_obj_t *s_sub;
 
 // RADIO setup page.
 static lv_obj_t *s_setup;
@@ -84,7 +92,8 @@ enum {
     T_OUTPUT, T_KIND_SERIAL, T_KIND_PPM, T_PROTO_TITLE, T_RX_NUM, T_FINE, T_REVERSE, T_REV_STEER, T_REV_THR,
     T_BIND, T_BINDING_FMT, T_UNKNOWN_FMT, T_PLUG, T_BUTTON_FMT, T_LIMIT_FMT, T_SUB_ELRS, T_SUB_MULTI_FMT,
     T_SUB_PPM, T_TX_SERIAL, T_TX_PPM, T_RX_FMT, T_DIAL, T_NO_TELEM, T_LINKED, T_CAR_OFF, T_CH_FMT,
-    T_HINT_ELRS, T_HINT_SERIAL, T_HINT_PPM, T_LANG, T_COUNT
+    T_HINT_ELRS, T_HINT_SERIAL, T_HINT_PPM, T_LANG, T_POWER, T_SPEED, T_ENGINE_ON, T_ENGINE_OFF, T_PRESS_START,
+    T_N_STOP, T_N_PEDALS, T_N_ENGINE, T_L_ENGINE, T_L_BRAKE, T_L_REVERSE, T_L_SIGNAL, T_L_ESTOP, T_COUNT
 };
 
 static const char *const TEXT[T_COUNT][2] = {
@@ -99,7 +108,7 @@ static const char *const TEXT[T_COUNT][2] = {
     [T_STEER_FMT] = {"转向  %+d", "轉向  %+d"},
     [T_STEER_ZERO] = {"转向  0", "轉向  0"},
     [T_CONTROL] = {"控制", "控制"},
-    [T_HINT] = {"Start 解锁/上锁    拨片 换档    P 急停    N 对频", "Start 解鎖/上鎖    撥片 換檔    P 急停    N 對頻"},
+    [T_HINT] = {"Start 点火/熄火   拨片 换挡   P 急停   N 对频", "Start 點火/熄火   撥片 換擋   P 急停   N 對頻"},
     [T_PEDALS] = {"踏板", "踏板"},
     [T_GAS] = {"油门", "油門"},
     [T_BRAKE] = {"刹车", "剎車"},
@@ -144,6 +153,19 @@ static const char *const TEXT[T_COUNT][2] = {
                     "用高頻頭旋鈕選協議（1～E，F 選組別，轉後要斷電重開）。對頻：按住高頻頭對頻鍵上電 5 秒，"
                     "再讓接收機進入對頻。"},
     [T_LANG] = {"语言", "語言"},
+    [T_POWER] = {"动力 %", "動力 %"},
+    [T_SPEED] = {"车速 %（估算）", "車速 %（估算）"},
+    [T_ENGINE_ON] = {"已点火", "已點火"},
+    [T_ENGINE_OFF] = {"已熄火", "已熄火"},
+    [T_PRESS_START] = {"按 Start 点火", "按 Start 點火"},
+    [T_N_STOP] = {"先停车再换方向", "先停車再換方向"},
+    [T_N_PEDALS] = {"先松开踏板再点火", "先鬆開踏板再點火"},
+    [T_N_ENGINE] = {"先按 Start 点火", "先按 Start 點火"},
+    [T_L_ENGINE] = {"点火", "點火"},
+    [T_L_BRAKE] = {"刹车", "剎車"},
+    [T_L_REVERSE] = {"倒挡", "倒擋"},
+    [T_L_SIGNAL] = {"信号", "信號"},
+    [T_L_ESTOP] = {"急停", "急停"},
 };
 
 static lang_t s_lang = LANG_SC;
@@ -257,21 +279,11 @@ static uint32_t lq_color(int lq) {
     return lq >= 70 ? C_GREEN : (lq >= 40 ? C_AMBER : C_RED);
 }
 
-static float speed_limit(speed_t s) {
-    return s == SPEED_HIGH ? 1.0f : (s == SPEED_MID ? 2.0f / 3.0f : 1.0f / 3.0f);
-}
-
 // ---- touch -------------------------------------------------------------------
 
 static void on_estop(lv_event_t *e) {
     control_estop();
     ESP_LOGW(TAG, "E-STOP (screen)");
-}
-
-static void on_speed(lv_event_t *e) {
-    speed_t s = (speed_t)(intptr_t)lv_event_get_user_data(e);
-    control_set_speed(s);
-    ESP_LOGI(TAG, "speed %d (screen)", (int)s);
 }
 
 // Every setup change applies (and is saved) at once.
@@ -353,7 +365,7 @@ static void on_lang(lv_event_t *e) {
 }
 
 static void on_setup_open(lv_event_t *e) {
-    control_disarm("RADIO");
+    control_ignition_off("SETUP");
     lv_obj_remove_flag(s_setup, LV_OBJ_FLAG_HIDDEN);
 }
 
@@ -362,95 +374,6 @@ static void on_setup_close(lv_event_t *e) {
 }
 
 // ---- build -------------------------------------------------------------------
-
-static void build_top(lv_obj_t *scr) {
-    lv_obj_t *title = label(scr, &lv_font_montserrat_24, C_TEXT, "RC CONTROL");
-    lv_obj_set_style_text_letter_space(title, 2, 0);
-    lv_obj_set_pos(title, M + 8, 10);
-    s_sub = label(scr, &cjk_14, C_DIM, "");
-    lv_obj_set_style_text_letter_space(s_sub, 2, 0);
-    lv_obj_set_pos(s_sub, M + 8, 40);
-
-    s_pill = lv_obj_create(scr);
-    lv_obj_remove_style_all(s_pill);
-    lv_obj_set_size(s_pill, 260, 44);
-    lv_obj_align(s_pill, LV_ALIGN_TOP_MID, 0, 10);
-    lv_obj_set_style_radius(s_pill, 22, 0);
-    lv_obj_set_style_bg_opa(s_pill, LV_OPA_20, 0);
-    lv_obj_set_style_border_width(s_pill, 2, 0);
-    lv_obj_remove_flag(s_pill, LV_OBJ_FLAG_SCROLLABLE);
-    s_pill_label = label(s_pill, &cjk_24, C_TEXT, tr(T_NO_WHEEL));
-    lv_obj_set_style_text_letter_space(s_pill_label, 3, 0);
-    lv_obj_center(s_pill_label);
-
-    s_wheel_label = label(scr, &cjk_16, C_DIM, "");
-    lv_obj_align(s_wheel_label, LV_ALIGN_TOP_RIGHT, -M - 8, 12);
-    s_button_label = label(scr, &cjk_14, C_FAINT, "");
-    lv_obj_align(s_button_label, LV_ALIGN_TOP_RIGHT, -M - 8, 40);
-}
-
-static void build_drive(lv_obj_t *scr) {
-    lv_obj_t *p = panel(scr, M, TOP_H + 8, DRIVE_W, 600 - TOP_H - 8 - M);
-    section_title(p, T_DRIVE);
-    const int cy = 230; // gauge centre in the panel
-
-    // Ticks every 10 %, labels every 50 %.
-    lv_obj_t *sc = lv_scale_create(p);
-    lv_obj_set_size(sc, GAUGE_D + 40, GAUGE_D + 40);
-    lv_obj_align(sc, LV_ALIGN_TOP_MID, 0, cy - (GAUGE_D + 40) / 2);
-    lv_scale_set_mode(sc, LV_SCALE_MODE_ROUND_OUTER);
-    lv_scale_set_range(sc, -100, 100);
-    lv_scale_set_angle_range(sc, 270);
-    lv_scale_set_rotation(sc, 135);
-    lv_scale_set_total_tick_count(sc, 21);
-    lv_scale_set_major_tick_every(sc, 5);
-    lv_scale_set_label_show(sc, true);
-    lv_obj_set_style_arc_width(sc, 0, LV_PART_MAIN);
-    lv_obj_set_style_length(sc, 6, LV_PART_ITEMS);
-    lv_obj_set_style_length(sc, 12, LV_PART_INDICATOR);
-    lv_obj_set_style_line_color(sc, hex(C_FAINT), LV_PART_ITEMS);
-    lv_obj_set_style_line_color(sc, hex(C_DIM), LV_PART_INDICATOR);
-    lv_obj_set_style_line_width(sc, 1, LV_PART_ITEMS);
-    lv_obj_set_style_line_width(sc, 2, LV_PART_INDICATOR);
-    lv_obj_set_style_text_color(sc, hex(C_DIM), LV_PART_INDICATOR);
-    lv_obj_set_style_text_font(sc, &lv_font_montserrat_12, LV_PART_INDICATOR);
-
-    // Speed-tier ceiling: thin ring, usable span light, beyond it red.
-    s_lim_pos = arc(p, GAUGE_D + 26, 3, C_RED, LV_OPA_50);
-    s_lim_neg = arc(p, GAUGE_D + 26, 3, C_RED, LV_OPA_TRANSP);
-    for (int i = 0; i < 2; i++) {
-        lv_obj_t *a = i ? s_lim_neg : s_lim_pos;
-        lv_obj_align(a, LV_ALIGN_TOP_MID, 0, cy - (GAUGE_D + 26) / 2);
-        lv_obj_set_style_arc_color(a, hex(C_DIM), LV_PART_INDICATOR);
-    }
-
-    s_arc = arc(p, GAUGE_D, 22, C_TRACK, LV_OPA_COVER);
-    lv_obj_align(s_arc, LV_ALIGN_TOP_MID, 0, cy - GAUGE_D / 2);
-
-    s_value = label(p, &lv_font_montserrat_48, C_TEXT, "--");
-    lv_obj_align(s_value, LV_ALIGN_TOP_MID, 0, cy - 34);
-    lv_obj_t *cap = track(label(p, &cjk_14, C_DIM, ""), T_THR_PCT);
-    lv_obj_set_style_text_letter_space(cap, 3, 0);
-    lv_obj_align(cap, LV_ALIGN_TOP_MID, 0, cy + 22);
-    s_limit_label = label(p, &cjk_16, C_AMBER, "");
-    lv_obj_align(s_limit_label, LV_ALIGN_TOP_MID, 0, cy + 46);
-
-    // Steering strip under the gauge.
-    const int sy = 448, sw = 500;
-    s_steer_bar = hbar(p, (DRIVE_W - sw) / 2, sy, sw, 14, -100, C_CYAN);
-    lv_obj_t *mid = lv_obj_create(p);
-    lv_obj_remove_style_all(mid);
-    lv_obj_set_size(mid, 2, 24);
-    lv_obj_set_pos(mid, DRIVE_W / 2 - 1, sy - 5);
-    lv_obj_set_style_bg_color(mid, hex(C_DIM), 0);
-    lv_obj_set_style_bg_opa(mid, LV_OPA_COVER, 0);
-    lv_obj_t *l = track(label(p, &cjk_14, C_FAINT, ""), T_LEFT);
-    lv_obj_set_pos(l, (DRIVE_W - sw) / 2 - 18, sy - 1);
-    lv_obj_t *r = track(label(p, &cjk_14, C_FAINT, ""), T_RIGHT);
-    lv_obj_set_pos(r, (DRIVE_W + sw) / 2 + 8, sy - 1);
-    s_steer_label = label(p, &cjk_16, C_DIM, "");
-    lv_obj_align(s_steer_label, LV_ALIGN_TOP_MID, 0, sy - 30);
-}
 
 static lv_obj_t *button(lv_obj_t *parent, int x, int y, int w, int h, uint32_t color, const lv_font_t *font,
                         const char *text) {
@@ -470,39 +393,150 @@ static lv_obj_t *button(lv_obj_t *parent, int x, int y, int w, int h, uint32_t c
     return b;
 }
 
-static void build_control(lv_obj_t *scr) {
-    const int y0 = TOP_H + 8, h = 236;
-    lv_obj_t *p = panel(scr, SIDE_X, y0, SIDE_W, h);
-    section_title(p, T_CONTROL);
+static void build_top(lv_obj_t *scr) {
+    lv_obj_t *title = label(scr, &lv_font_montserrat_20, C_TEXT, "RC CONTROL");
+    lv_obj_set_style_text_letter_space(title, 2, 0);
+    lv_obj_set_pos(title, M + 8, 6);
+    s_sub = label(scr, &cjk_14, C_DIM, "");
+    lv_obj_set_pos(s_sub, M + 8, 32);
 
-    static const char *names[3] = {"低速", "中速", "高速"};
-    const int bw = (SIDE_W - 36 - 16) / 3;
-    for (int i = 0; i < 3; i++) {
-        s_speed_btn[i] = button(p, 18 + i * (bw + 8), 40, bw, 56, C_DIM, &cjk_24, names[i]);
-        lv_obj_add_event_cb(s_speed_btn[i], on_speed, LV_EVENT_CLICKED, (void *)(intptr_t)i);
-    }
+    s_pill = lv_obj_create(scr);
+    lv_obj_remove_style_all(s_pill);
+    lv_obj_set_size(s_pill, 240, 40);
+    lv_obj_align(s_pill, LV_ALIGN_TOP_MID, 0, 8);
+    lv_obj_set_style_radius(s_pill, 20, 0);
+    lv_obj_set_style_bg_opa(s_pill, LV_OPA_20, 0);
+    lv_obj_set_style_border_width(s_pill, 2, 0);
+    lv_obj_remove_flag(s_pill, LV_OBJ_FLAG_SCROLLABLE);
+    s_pill_label = label(s_pill, &cjk_24, C_TEXT, tr(T_NO_WHEEL));
+    lv_obj_center(s_pill_label);
 
-    lv_obj_t *stop = button(p, 18, 108, SIDE_W - 36, 72, C_RED, &cjk_32, "");
-    track(lv_obj_get_child(stop, 0), T_ESTOP);
-    lv_obj_set_style_bg_opa(stop, LV_OPA_40, 0);
-    // Pressed, not clicked: stop on touch-down, without waiting for release.
-    lv_obj_add_event_cb(stop, on_estop, LV_EVENT_PRESSED, NULL);
-
-    s_hint = track(label(p, &cjk_14, C_DIM, ""), T_HINT);
-    lv_obj_set_pos(s_hint, 18, 196);
+    lv_obj_t *setup = button(scr, 1024 - M - 160, 8, 160, 40, C_CYAN, &cjk_16, "");
+    track(lv_obj_get_child(setup, 0), T_SETUP_BTN);
+    lv_obj_add_event_cb(setup, on_setup_open, LV_EVENT_CLICKED, NULL);
+    s_wheel_label = label(scr, &cjk_16, C_DIM, "");
+    lv_obj_align(s_wheel_label, LV_ALIGN_TOP_RIGHT, -M - 160 - 16, 8);
+    s_button_label = label(scr, &cjk_14, C_FAINT, "");
+    lv_obj_align(s_button_label, LV_ALIGN_TOP_RIGHT, -M - 160 - 16, 32);
 }
 
-static void build_pedals(lv_obj_t *scr) {
-    const int y0 = TOP_H + 8 + 236 + M, h = 112;
-    lv_obj_t *p = panel(scr, SIDE_X, y0, SIDE_W, h);
-    section_title(p, T_PEDALS);
-    const int bx = 86, bw = SIDE_W - bx - 70;
+// A round gauge 0..100 % over 270 degrees, like a tachometer.
+static gauge_t build_gauge(lv_obj_t *scr, int cx, int caption_id, bool redline) {
+    gauge_t g = {0};
+    const int sd = GAUGE_D + 40;
+    lv_obj_t *sc = lv_scale_create(scr);
+    lv_obj_set_size(sc, sd, sd);
+    lv_obj_set_pos(sc, cx - sd / 2, GAUGE_CY - sd / 2);
+    lv_scale_set_mode(sc, LV_SCALE_MODE_ROUND_OUTER);
+    lv_scale_set_range(sc, 0, 100);
+    lv_scale_set_angle_range(sc, 270);
+    lv_scale_set_rotation(sc, 135);
+    lv_scale_set_total_tick_count(sc, 21);
+    lv_scale_set_major_tick_every(sc, 2);
+    lv_scale_set_label_show(sc, true);
+    lv_obj_set_style_arc_width(sc, 0, LV_PART_MAIN);
+    lv_obj_set_style_length(sc, 6, LV_PART_ITEMS);
+    lv_obj_set_style_length(sc, 12, LV_PART_INDICATOR);
+    lv_obj_set_style_line_color(sc, hex(C_FAINT), LV_PART_ITEMS);
+    lv_obj_set_style_line_color(sc, hex(C_DIM), LV_PART_INDICATOR);
+    lv_obj_set_style_line_width(sc, 1, LV_PART_ITEMS);
+    lv_obj_set_style_line_width(sc, 2, LV_PART_INDICATOR);
+    lv_obj_set_style_text_color(sc, hex(C_DIM), LV_PART_INDICATOR);
+    lv_obj_set_style_text_font(sc, &lv_font_montserrat_14, LV_PART_INDICATOR);
+
+    if (redline) {
+        // Beyond the gear's cap: a red band just inside the ticks.
+        g.red = arc(scr, GAUGE_D + 18, 5, C_RED, LV_OPA_80);
+        lv_obj_set_pos(g.red, cx - (GAUGE_D + 18) / 2, GAUGE_CY - (GAUGE_D + 18) / 2);
+        lv_obj_remove_style(g.red, NULL, LV_PART_INDICATOR);
+    }
+    g.arc = arc(scr, GAUGE_D, 20, C_TRACK, LV_OPA_COVER);
+    lv_arc_set_range(g.arc, 0, 100);
+    lv_arc_set_mode(g.arc, LV_ARC_MODE_NORMAL);
+    lv_obj_set_pos(g.arc, cx - GAUGE_D / 2, GAUGE_CY - GAUGE_D / 2);
+
+    g.value = label(scr, &lv_font_montserrat_48, C_TEXT, "0");
+    lv_obj_align(g.value, LV_ALIGN_TOP_LEFT, 0, 0);
+    lv_obj_set_width(g.value, 160);
+    lv_obj_set_style_text_align(g.value, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_pos(g.value, cx - 80, GAUGE_CY - 34);
+    lv_obj_t *cap = track(label(scr, &cjk_16, C_DIM, ""), caption_id);
+    lv_obj_set_width(cap, 200);
+    lv_obj_set_style_text_align(cap, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_pos(cap, cx - 100, GAUGE_CY + 26);
+    return g;
+}
+
+static void build_center(lv_obj_t *scr) {
+    s_gear = label(scr, &gear_160, C_TEXT, "N");
+    lv_obj_set_width(s_gear, 240);
+    lv_obj_set_style_text_align(s_gear, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_pos(s_gear, MID_CX - 120, 70);
+
+    static const char *names[5] = {"R", "N", "1", "2", "3"};
+    const int cw = 44, gap = 8, x0 = MID_CX - (5 * cw + 4 * gap) / 2;
+    for (int i = 0; i < 5; i++) {
+        lv_obj_t *c = lv_obj_create(scr);
+        lv_obj_remove_style_all(c);
+        lv_obj_set_size(c, cw, 40);
+        lv_obj_set_pos(c, x0 + i * (cw + gap), 270);
+        lv_obj_set_style_radius(c, 8, 0);
+        lv_obj_set_style_border_width(c, 2, 0);
+        lv_obj_set_style_border_color(c, hex(C_EDGE), 0);
+        lv_obj_set_style_bg_opa(c, LV_OPA_20, 0);
+        lv_obj_remove_flag(c, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_t *l = label(c, &lv_font_montserrat_24, C_DIM, names[i]);
+        lv_obj_center(l);
+        s_gear_cell[i] = c;
+    }
+
+    s_notice = label(scr, &cjk_20, C_AMBER, "");
+    lv_obj_set_width(s_notice, 300);
+    lv_obj_set_style_text_align(s_notice, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_pos(s_notice, MID_CX - 150, 322);
+
+    const int sw = 240, sy = 368;
+    s_steer_bar = hbar(scr, MID_CX - sw / 2, sy, sw, 10, -100, C_CYAN);
+    lv_obj_t *mid = lv_obj_create(scr);
+    lv_obj_remove_style_all(mid);
+    lv_obj_set_size(mid, 2, 20);
+    lv_obj_set_pos(mid, MID_CX - 1, sy - 5);
+    lv_obj_set_style_bg_color(mid, hex(C_DIM), 0);
+    lv_obj_set_style_bg_opa(mid, LV_OPA_COVER, 0);
+    lv_obj_t *l = track(label(scr, &cjk_14, C_FAINT, ""), T_LEFT);
+    lv_obj_set_pos(l, MID_CX - sw / 2 - 22, sy - 4);
+    lv_obj_t *r = track(label(scr, &cjk_14, C_FAINT, ""), T_RIGHT);
+    lv_obj_set_pos(r, MID_CX + sw / 2 + 8, sy - 4);
+
+    s_hint = track(label(scr, &cjk_14, C_FAINT, ""), T_HINT);
+    lv_obj_set_width(s_hint, 340);
+    lv_obj_set_style_text_align(s_hint, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_pos(s_hint, MID_CX - 170, 394);
+}
+
+// Warning lamps and pedals.
+static void build_lamps(lv_obj_t *scr) {
+    lv_obj_t *p = panel(scr, M, BOTTOM_Y, 440, 600 - BOTTOM_Y - M);
+    static const int names[LAMPS] = {T_L_ENGINE, T_L_BRAKE, T_L_REVERSE, T_L_SIGNAL, T_L_ESTOP};
+    const int lw = 76, gap = 7;
+    for (int i = 0; i < LAMPS; i++) {
+        lv_obj_t *c = lv_obj_create(p);
+        lv_obj_remove_style_all(c);
+        lv_obj_set_size(c, lw, 38);
+        lv_obj_set_pos(c, 16 + i * (lw + gap), 14);
+        lv_obj_set_style_radius(c, 8, 0);
+        lv_obj_set_style_border_width(c, 2, 0);
+        lv_obj_remove_flag(c, LV_OBJ_FLAG_SCROLLABLE);
+        lv_obj_t *l = track(label(c, &cjk_16, C_FAINT, ""), names[i]);
+        lv_obj_center(l);
+        s_lamp[i] = c;
+    }
+    const int bx = 70, bw = 440 - bx - 70;
     for (int i = 0; i < 2; i++) {
-        int y = 44 + i * 32;
-        lv_obj_t *name = track(label(p, &cjk_14, C_DIM, ""), i ? T_BRAKE : T_GAS);
-        lv_obj_set_style_text_letter_space(name, 2, 0);
-        lv_obj_set_pos(name, 18, y);
-        lv_obj_t *bar = hbar(p, bx, y + 1, bw, 12, 0, i ? C_CYAN : C_AMBER);
+        int y = 72 + i * 34;
+        lv_obj_t *name = track(label(p, &cjk_16, C_DIM, ""), i ? T_BRAKE : T_GAS);
+        lv_obj_set_pos(name, 18, y - 4);
+        lv_obj_t *bar = hbar(p, bx, y, bw, 12, 0, i ? C_RED : C_GREEN);
         lv_obj_t *val = label(p, &lv_font_montserrat_16, C_TEXT, "0");
         lv_obj_align(val, LV_ALIGN_TOP_RIGHT, -18, y - 3);
         if (i) {
@@ -514,37 +548,35 @@ static void build_pedals(lv_obj_t *scr) {
 }
 
 static void build_link(lv_obj_t *scr) {
-    const int y0 = TOP_H + 8 + 236 + M + 112 + M;
-    const int h = 600 - y0 - M;
-    lv_obj_t *p = panel(scr, SIDE_X, y0, SIDE_W, h);
+    const int x0 = M + 440 + M, w = 1024 - x0 - M - 220 - M;
+    lv_obj_t *p = panel(scr, x0, BOTTOM_Y, w, 600 - BOTTOM_Y - M);
     section_title(p, T_LINK);
-
     s_tx_label = label(p, &cjk_24, C_RED, "");
-    lv_obj_set_style_text_letter_space(s_tx_label, 2, 0);
     lv_obj_set_pos(s_tx_label, 18, 36);
     s_rssi_label = label(p, &cjk_16, C_DIM, "-- dBm");
-    lv_obj_align(s_rssi_label, LV_ALIGN_TOP_RIGHT, -18, 42);
+    lv_obj_align(s_rssi_label, LV_ALIGN_TOP_RIGHT, -18, 12);
 
-    const int sw = (SIDE_W - 36 - 70 - (LQ_SEGS - 1) * 3) / LQ_SEGS;
+    const int sw = (w - 36 - 90 - (LQ_SEGS - 1) * 3) / LQ_SEGS;
     for (int i = 0; i < LQ_SEGS; i++) {
-        lv_obj_t *s = lv_obj_create(p);
-        lv_obj_remove_style_all(s);
-        lv_obj_set_size(s, sw, 10);
-        lv_obj_set_pos(s, 18 + i * (sw + 3), 82);
-        lv_obj_set_style_radius(s, 2, 0);
-        lv_obj_set_style_bg_color(s, hex(C_TRACK), 0);
-        lv_obj_set_style_bg_opa(s, LV_OPA_COVER, 0);
-        s_lq_seg[i] = s;
+        lv_obj_t *sg = lv_obj_create(p);
+        lv_obj_remove_style_all(sg);
+        lv_obj_set_size(sg, sw, 10);
+        lv_obj_set_pos(sg, 18 + i * (sw + 3), 82);
+        lv_obj_set_style_radius(sg, 2, 0);
+        lv_obj_set_style_bg_color(sg, hex(C_TRACK), 0);
+        lv_obj_set_style_bg_opa(sg, LV_OPA_COVER, 0);
+        s_lq_seg[i] = sg;
     }
     s_lq_label = label(p, &cjk_16, C_DIM, "LQ --");
     lv_obj_align(s_lq_label, LV_ALIGN_TOP_RIGHT, -18, 77);
-
     s_ch_label = label(p, &cjk_14, C_FAINT, "");
     lv_obj_set_pos(s_ch_label, 18, 106);
 
-    lv_obj_t *radio = button(p, SIDE_W - 18 - 150, 6, 150, 30, C_CYAN, &cjk_16, "");
-    track(lv_obj_get_child(radio, 0), T_SETUP_BTN);
-    lv_obj_add_event_cb(radio, on_setup_open, LV_EVENT_CLICKED, NULL);
+    lv_obj_t *stop = button(scr, 1024 - M - 220, BOTTOM_Y, 220, 600 - BOTTOM_Y - M, C_RED, &cjk_32, "");
+    track(lv_obj_get_child(stop, 0), T_ESTOP);
+    lv_obj_set_style_bg_opa(stop, LV_OPA_40, 0);
+    // Pressed, not clicked: stop on touch-down, without waiting for release.
+    lv_obj_add_event_cb(stop, on_estop, LV_EVENT_PRESSED, NULL);
 }
 
 static lv_obj_t *setup_label(lv_obj_t *p, int x, int y, int id) {
@@ -660,9 +692,10 @@ void display_init(void) {
     lv_obj_set_style_bg_opa(scr, LV_OPA_COVER, 0);
     lv_obj_remove_flag(scr, LV_OBJ_FLAG_SCROLLABLE);
     build_top(scr);
-    build_drive(scr);
-    build_control(scr);
-    build_pedals(scr);
+    s_power = build_gauge(scr, GAUGE_L_CX, T_POWER, true);
+    s_speed = build_gauge(scr, GAUGE_R_CX, T_SPEED, false);
+    build_center(scr);
+    build_lamps(scr);
     build_link(scr);
     build_setup();
     bsp_display_unlock();
@@ -677,12 +710,12 @@ static void show_state(const display_state_t *s) {
     uint32_t color;
     if (!s->wheel) {
         text = tr(T_NO_WHEEL), color = C_FAINT;
-    } else if (c->armed) {
-        text = tr(T_ARMED), color = C_GREEN;
-    } else if (strcmp(c->disarm_reason, "E-STOP") == 0) {
+    } else if (c->engine) {
+        text = tr(T_ENGINE_ON), color = C_GREEN;
+    } else if (strcmp(c->off_reason, "E-STOP") == 0) {
         text = tr(T_ESTOP), color = C_RED;
     } else {
-        text = tr(T_SAFE), color = C_AMBER;
+        text = tr(T_ENGINE_OFF), color = C_AMBER;
     }
     set_text(s_pill_label, text);
     lv_obj_set_style_bg_color(s_pill, hex(color), 0);
@@ -710,48 +743,103 @@ static void show_state(const display_state_t *s) {
     set_text(s_button_label, buf);
 }
 
+static void show_gauge(const gauge_t *g, float v, lv_color_t color, bool on) {
+    char buf[16];
+    int pct = (int)lroundf(fabsf(v) * 100.0f);
+    lv_arc_set_value(g->arc, on ? pct : 0);
+    lv_obj_set_style_arc_color(g->arc, color, LV_PART_INDICATOR);
+    snprintf(buf, sizeof(buf), "%d", on ? pct : 0);
+    set_text(g->value, buf);
+    lv_obj_set_style_text_color(g->value, hex(on ? C_TEXT : C_FAINT), 0);
+}
+
+static int notice_id(const char *n) {
+    if (n == NULL) {
+        return -1;
+    }
+    if (strcmp(n, "STOP FIRST") == 0) {
+        return T_N_STOP;
+    }
+    if (strcmp(n, "RELEASE PEDALS") == 0) {
+        return T_N_PEDALS;
+    }
+    if (strcmp(n, "ENGINE OFF") == 0) {
+        return T_N_ENGINE;
+    }
+    if (strcmp(n, "NO WHEEL") == 0) {
+        return T_NO_WHEEL;
+    }
+    return -1;
+}
+
 static void show_drive(const display_state_t *s) {
     const control_view_t *c = &s->ctl;
-    char buf[32];
-    // Throttle actually sent when armed; otherwise the pedal demand, dimmed,
-    // so the pedals can still be checked.
-    float thr = c->armed ? c->output.throttle : c->throttle_demand;
-    int pct = (int)lroundf(thr * 100.0f);
-    lv_arc_set_value(s_arc, s->wheel ? pct : 0);
-    lv_obj_set_style_arc_color(s_arc, c->armed ? throttle_color(thr) : hex(C_FAINT), LV_PART_INDICATOR);
-    if (s->wheel) {
-        snprintf(buf, sizeof(buf), "%+d", pct);
-        set_text(s_value, pct == 0 ? "0" : buf);
-    } else {
-        set_text(s_value, "--");
-    }
-    lv_obj_set_style_text_color(s_value, hex(c->armed ? C_TEXT : C_DIM), 0);
+    bool on = c->engine && s->wheel;
+    float thr = c->output.throttle;
+    // Power: what drives the wheels; braking shows on the lamp instead.
+    float power = (c->braking || thr * c->speed < 0) ? 0.0f : thr;
+    show_gauge(&s_power, power, throttle_color(power), on);
+    show_gauge(&s_speed, c->speed, hex(c->speed < 0 ? C_BLUE : C_CYAN), on);
 
-    float lim = speed_limit(c->speed);
-    int lp = (int)lroundf(lim * 100.0f);
-    lv_arc_set_value(s_lim_pos, lp);
-    lv_arc_set_value(s_lim_neg, -lp);
-    static const char *tier[3] = {"低速", "中速", "高速"};
-    snprintf(buf, sizeof(buf), tr(T_LIMIT_FMT), tier[c->speed], lp);
-    set_text(s_limit_label, buf);
+    // The gear's cap: red from there to 100 %.
+    float cap = c->gear == GEAR_N ? 0.0f : c->gear_max;
+    if (cap >= 0.999f || !on) {
+        lv_obj_add_flag(s_power.red, LV_OBJ_FLAG_HIDDEN);
+    } else {
+        lv_obj_remove_flag(s_power.red, LV_OBJ_FLAG_HIDDEN);
+        int start = 135 + (int)lroundf(270.0f * cap);
+        lv_arc_set_bg_angles(s_power.red, start % 360, 45);
+    }
+
+    static const char *names[5] = {"R", "N", "1", "2", "3"};
+    int gi = (int)c->gear - GEAR_R;
+    set_text(s_gear, names[gi]);
+    uint32_t gc = !on ? C_FAINT : (c->gear == GEAR_R ? C_AMBER : (c->gear == GEAR_N ? C_TEXT : C_GREEN));
+    lv_obj_set_style_text_color(s_gear, hex(gc), 0);
+    for (int i = 0; i < 5; i++) {
+        bool cur = i == gi && on;
+        lv_obj_set_style_border_color(s_gear_cell[i], hex(cur ? gc : C_EDGE), 0);
+        lv_obj_set_style_bg_color(s_gear_cell[i], hex(cur ? gc : C_PANEL), 0);
+        lv_obj_set_style_text_color(lv_obj_get_child(s_gear_cell[i], 0), hex(cur ? C_TEXT : C_FAINT), 0);
+    }
+
+    int n = notice_id(c->notice);
+    if (n >= 0) {
+        set_text(s_notice, tr(n));
+        lv_obj_set_style_text_color(s_notice, hex(C_AMBER), 0);
+    } else if (!c->engine && s->wheel) {
+        set_text(s_notice, tr(T_PRESS_START));
+        lv_obj_set_style_text_color(s_notice, hex(C_DIM), 0);
+    } else {
+        set_text(s_notice, "");
+    }
 
     int st = s->wheel ? (int)lroundf(c->steering * 100.0f) : 0;
     lv_bar_set_value(s_steer_bar, st, LV_ANIM_OFF);
-    snprintf(buf, sizeof(buf), tr(T_STEER_FMT), st);
-    set_text(s_steer_label, st == 0 ? tr(T_STEER_ZERO) : buf);
-
-    for (int i = 0; i < 3; i++) {
-        bool on = (int)c->speed == i;
-        lv_obj_set_style_border_color(s_speed_btn[i], hex(on ? C_AMBER : C_EDGE), 0);
-        lv_obj_set_style_bg_color(s_speed_btn[i], hex(on ? C_AMBER : C_DIM), 0);
-        lv_obj_set_style_bg_opa(s_speed_btn[i], on ? LV_OPA_30 : LV_OPA_10, 0);
-    }
 }
 
-static void show_pedals(const display_state_t *s) {
-    char buf[8];
-    int g = s->wheel ? (int)lroundf(s->axes.gas * 100.0f) : 0;
-    int b = s->wheel ? (int)lroundf(s->axes.brake * 100.0f) : 0;
+static void lamp(int i, bool lit, uint32_t color) {
+    lv_obj_set_style_border_color(s_lamp[i], hex(lit ? color : C_EDGE), 0);
+    lv_obj_set_style_bg_color(s_lamp[i], hex(lit ? color : C_PANEL), 0);
+    lv_obj_set_style_bg_opa(s_lamp[i], lit ? LV_OPA_40 : LV_OPA_COVER, 0);
+    lv_obj_set_style_text_color(lv_obj_get_child(s_lamp[i], 0), hex(lit ? C_TEXT : C_FAINT), 0);
+}
+
+static void show_lamps(const display_state_t *s) {
+    const control_view_t *c = &s->ctl;
+    lamp(LAMP_ENGINE, c->engine, C_GREEN);
+    lamp(LAMP_BRAKE, c->engine && c->braking, C_RED);
+    lamp(LAMP_REVERSE, c->engine && c->gear == GEAR_R, C_AMBER);
+    if (s->cfg.kind == RADIO_ELRS) {
+        lamp(LAMP_SIGNAL, true, s->radio.link ? C_GREEN : (s->radio.module ? C_AMBER : C_RED));
+    } else {
+        lamp(LAMP_SIGNAL, true, C_CYAN); // MULTI: sending, no telemetry
+    }
+    lamp(LAMP_ESTOP, !c->engine && strcmp(c->off_reason, "E-STOP") == 0, C_RED);
+
+    char buf[16];
+    int g = s->wheel ? (int)lroundf(c->gas * 100.0f) : 0;
+    int b = s->wheel ? (int)lroundf(c->brake * 100.0f) : 0;
     lv_bar_set_value(s_gas_bar, g, LV_ANIM_OFF);
     lv_bar_set_value(s_brake_bar, b, LV_ANIM_OFF);
     snprintf(buf, sizeof(buf), "%d", g);
@@ -880,7 +968,7 @@ void display_show(const display_state_t *s) {
     }
     show_state(s);
     show_drive(s);
-    show_pedals(s);
+    show_lamps(s);
     show_link(s);
     show_setup(s);
     bsp_display_unlock();

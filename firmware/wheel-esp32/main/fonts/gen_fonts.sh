@@ -21,4 +21,7 @@ for size in 14 16 20 24 32; do
         --format lvgl --lv-include lvgl.h --lv-font-name cjk_$size --lv-fallback lv_font_montserrat_$size \
         -o cjk_$size.c
 done
+# The big gear indicator: just the gear names.
+npx -y lv_font_conv@1.5.3 --font "$FONT" --symbols "RN123" --size 160 --bpp 4 --no-compress \
+    --format lvgl --lv-include lvgl.h --lv-font-name gear_160 -o gear_160.c
 echo "$(printf %s "$CHARS" | wc -m | tr -d ' ') characters"
