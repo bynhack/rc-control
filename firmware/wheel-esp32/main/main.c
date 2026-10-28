@@ -13,6 +13,7 @@
 //   Start (36)          arm / disarm (arming needs the pedals released)
 //   right / left paddle speed tier up / down (14 / 13)
 //   P (32)              emergency stop
+//   N (19)              bind the MULTI module
 
 #include <stdio.h>
 #include <string.h>
@@ -28,6 +29,7 @@
 #include "control.h"
 #include "crsf.h"
 #include "display.h"
+#include "multi.h"
 #include "wheel.h"
 
 static const char *TAG = "wheel";
@@ -49,6 +51,8 @@ static const char *TAG = "wheel";
 #define BTN_SPEED_UP 14
 #define BTN_SPEED_DOWN 13
 #define BTN_ESTOP 32
+// N: binds the MULTI module (multi.h)
+#define BTN_BIND 19
 
 typedef struct {
     hid_host_device_handle_t handle;
@@ -99,6 +103,9 @@ static void handle_buttons(uint64_t now_b, int64_t now_us) {
             const char *why = control_arm(now_us);
             ESP_LOGI(TAG, "arm: %s", why ? why : "ARMED");
         }
+    }
+    if (pressed & WHEEL_BUTTON(BTN_BIND)) {
+        multi_bind();
     }
     speed_t sp = control_speed();
     if ((pressed & WHEEL_BUTTON(BTN_SPEED_UP)) && sp < SPEED_HIGH) {
@@ -290,6 +297,7 @@ void app_main(void) {
     s_device_events = xQueueCreate(8, sizeof(device_event_t));
     control_init((int64_t)HEARTBEAT_TIMEOUT_MS * 1000);
     crsf_start();
+    multi_start();
     display_init();
 
     xTaskCreatePinnedToCore(usb_lib_task, "usb_lib", 4096, xTaskGetCurrentTaskHandle(), 2, NULL, 0);
