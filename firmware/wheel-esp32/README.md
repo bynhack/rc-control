@@ -55,6 +55,22 @@ idf.py -p /dev/cu.usbserial-XXXX flash monitor
 | GND | GND |
 | VCC（選 5V） | 5V |
 
+## 四合一高頻頭（MULTI）
+
+iRangeX IRX4+ 的 JR 母座從上到下：1 PPM → P4 的 GPIO30，2 空，3 VIN → 5V（CAN／RS485 端子第 1 腳），4 GND，5 S.Port（沒接）。
+
+P4 螢幕右下的「RADIO」按鈕打開設定頁：選 ELRS／MULTI SERIAL／MULTI PPM、串口協議、RX NUM、頻率微調、轉向／油門反轉、對頻。設定存在 NVS，只有選中的那個發射。
+
+| 模式 | 高頻頭旋鈕 | 對頻 |
+|---|---|---|
+| MULTI SERIAL | 0 | 設定頁的 BIND（或方向盤 N 鍵），30 秒 |
+| MULTI PPM | 1～E（F 選組別） | 按住高頻頭對頻鍵上電 5 秒 |
+
+- 高頻頭**只在上電時讀旋鈕**：轉了旋鈕要斷電再上電。
+- 串口訊號不反相（反相時紅燈慢閃）。紅燈常亮 = 收到訊號，快閃 = 對頻中。
+- 已驗證：富斯 FS-GT2E 的車（MXO-Racing RXC42-AG 接收機，AFHDS 2A），兩種模式都能開。MXO 接收機的對頻順序是發射端先進入對頻，再長按接收機按鍵 2 秒。
+- 美嘉欣 Hyper Go（14303 等）不支援，要換接收機。
+
 ## 硬體到貨後的步驟
 
 1. **車上接收機**：先確認型號，升級到 ELRS 3.5 以上（ESP8285 還支援）。
