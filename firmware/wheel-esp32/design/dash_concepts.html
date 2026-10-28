@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>仪表设计稿</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@0,300;0,500;0,700;1,600;1,800&family=Saira:wght@100;200;300;500&family=Marcellus&display=swap" rel="stylesheet">
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; background: #0b0c0e; color: #c9ced6; font-family: "Saira", sans-serif; }
+  header { max-width: 1024px; margin: 0 auto; padding: 28px 16px 8px; }
+  header h1 { font-weight: 300; font-size: 22px; margin: 0 0 6px; letter-spacing: 1px; }
+  header p { margin: 0; color: #7d8590; font-size: 14px; }
+  .controls { display: flex; gap: 14px; align-items: center; margin: 14px 0 0; font-size: 14px; color: #9aa1ab; flex-wrap: wrap; }
+  .controls button { background: #16191e; color: #d6dbe2; border: 1px solid #2a2f37; border-radius: 6px; padding: 6px 14px; font: inherit; cursor: pointer; }
+  .controls button.on { border-color: #5fd4ff; color: #5fd4ff; }
+  section { max-width: 1024px; margin: 26px auto 0; padding: 0 16px; }
+  section h2 { font-weight: 300; font-size: 18px; margin: 0 0 10px; color: #e3e7ec; letter-spacing: 1px; }
+  section h2 span { color: #6b737e; font-size: 14px; margin-left: 10px; }
+  .screen { width: 100%; aspect-ratio: 1024 / 600; border-radius: 14px; overflow: hidden; box-shadow: 0 0 0 1px #1f232a, 0 18px 40px rgba(0,0,0,.5); background: #000; }
+  .screen svg { width: 100%; height: 100%; display: block; }
+  footer { height: 60px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>仪表设计稿 · 1024 × 600</h1>
+  <p>两个方向，按真实尺寸绘制，带转向显示。下面的演示会自动跑一圈：点火 → 1 挡起步 → 升到 3 挡 → 松油门滑行 → 刹车 → 倒挡。</p>
+  <div class="controls">
+    <button id="demo" class="on">自动演示</button>
+    <label>车速 <input type="range" id="spd" min="0" max="100" value="0"></label>
+    <label>动力 <input type="range" id="pwr" min="0" max="100" value="0"></label>
+    <label>转向 <input type="range" id="str" min="-100" max="100" value="0"></label>
+    <span>挡位</span>
+    <button data-g="R">R</button><button data-g="N">N</button><button data-g="1">1</button><button data-g="2">2</button><button data-g="3">3</button>
+  </div>
+</header>
+
+<section><h2>A · 曜石<span>极简电动车风格；转向：表盘下方的俯视小车，前轮和预测轨迹线跟着方向盘转</span></h2>
+  <div class="screen"><svg id="a" viewBox="0 0 1024 600"></svg></div></section>
+<section><h2>B · 碳纤<span>性能跑车风格；转向：底部两侧的红色翼线从中间往外亮，加一个跟着转的方向盘</span></h2>
+  <div class="screen"><svg id="b" viewBox="0 0 1024 600"></svg></div></section>
+<footer></footer>
+
+<script>
+const NS = "http://www.w3.org/2000/svg";
+function el(tag, attrs, parent) {
+  const e = document.createElementNS(NS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(e);
+  return e;
+}
+const rad = d => (d - 90) * Math.PI / 180;
+function pt(cx, cy, r, deg) { return [cx + r * Math.cos(rad(deg)), cy + r * Math.sin(rad(deg))]; }
+function arcPath(cx, cy, r, a0, a1) {
+  const [x0, y0] = pt(cx, cy, r, a0), [x1, y1] = pt(cx, cy, r, a1);
+  const large = (a1 - a0) % 360 > 180 ? 1 : 0;
+  return `M${x0} ${y0} A${r} ${r} 0 ${large} 1 ${x1} ${y1}`;
+}
+const GEARS = ["R", "N", "1", "2", "3"];
+const CAP = { R: 0.4, N: 0, 1: 1 / 3, 2: 2 / 3, 3: 1 };
+
+/* ---------- A: obsidian ---------- */
+const A = (() => {
+  const s = document.getElementById("a");
+  const d = el("defs", {}, s);
+  d.innerHTML = `
+    <radialGradient id="aBg" cx="50%" cy="46%" r="70%"><stop offset="0" stop-color="#0d1824"/><stop offset=".55" stop-color="#05080c"/><stop offset="1" stop-color="#000"/></radialGradient>
+    <linearGradient id="aArc" x1="0" y1="1" x2="1" y2="0"><stop offset="0" stop-color="#1b6dff"/><stop offset=".6" stop-color="#29d3ff"/><stop offset="1" stop-color="#e9fbff"/></linearGradient>
+    <linearGradient id="aPow" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#ff9a3c"/><stop offset="1" stop-color="#ff3d5a"/></linearGradient>
+    <filter id="aGlow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="6" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    <filter id="aSoft"><feGaussianBlur stdDeviation="18"/></filter>
+    <linearGradient id="aPath" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#29d3ff" stop-opacity=".9"/><stop offset="1" stop-color="#29d3ff" stop-opacity="0"/></linearGradient>`;
+  el("rect", { width: 1024, height: 600, fill: "url(#aBg)" }, s);
+  const cx = 512, cy = 318, r = 222;
+  el("circle", { cx, cy, r: 170, fill: "#0a1a2a", opacity: .55, filter: "url(#aSoft)" }, s);
+  for (let i = 0; i <= 100; i++) {
+    const deg = -135 + i * 2.7, major = i % 10 == 0;
+    const [x0, y0] = pt(cx, cy, r + 18, deg), [x1, y1] = pt(cx, cy, r + (major ? 34 : 24), deg);
+    el("line", { x1: x0, y1: y0, x2: x1, y2: y1, stroke: major ? "#8fa3b8" : "#2a3644", "stroke-width": major ? 2 : 1, "stroke-linecap": "round" }, s);
+    if (major) {
+      const [tx, ty] = pt(cx, cy, r + 56, deg);
+      el("text", { x: tx, y: ty + 5, fill: "#5f7184", "font-size": 15, "font-family": "Saira", "font-weight": 300, "text-anchor": "middle" }, s).textContent = i;
+    }
+  }
+  el("path", { d: arcPath(cx, cy, r, -135, 135), stroke: "#121c27", "stroke-width": 6, fill: "none", "stroke-linecap": "round" }, s);
+  const arc = el("path", { stroke: "url(#aArc)", "stroke-width": 6, fill: "none", "stroke-linecap": "round", filter: "url(#aGlow)" }, s);
+  const tip = el("circle", { r: 7, fill: "#eafcff", filter: "url(#aGlow)" }, s);
+  const speed = el("text", { x: cx, y: cy + 38, fill: "#f2f6fa", "font-size": 132, "font-family": "Saira", "font-weight": 100, "text-anchor": "middle", "letter-spacing": "-4" }, s);
+  el("text", { x: cx, y: cy + 78, fill: "#56697d", "font-size": 16, "font-family": "Saira", "font-weight": 300, "text-anchor": "middle", "letter-spacing": "6" }, s).textContent = "车速 %";
+  // power: slim vertical bar on the left
+  el("text", { x: 92, y: 140, fill: "#56697d", "font-size": 14, "font-family": "Saira", "letter-spacing": "4" }, s).textContent = "动力";
+  el("rect", { x: 96, y: 160, width: 8, height: 300, rx: 4, fill: "#121c27" }, s);
+  const capLine = el("rect", { x: 88, width: 24, height: 2, fill: "#ff3d5a", opacity: .9 }, s);
+  const pow = el("rect", { x: 96, width: 8, rx: 4, fill: "url(#aPow)", filter: "url(#aGlow)" }, s);
+  const powTxt = el("text", { x: 100, y: 500, fill: "#e8edf2", "font-size": 30, "font-family": "Saira", "font-weight": 200, "text-anchor": "middle" }, s);
+  // gear selector: vertical column on the right
+  const gx = 920, gy0 = 170, gstep = 64;
+  const pill = el("rect", { x: gx - 34, width: 68, height: 52, rx: 26, fill: "#0f2233", stroke: "#29d3ff", "stroke-width": 1.5, filter: "url(#aGlow)" }, s);
+  const gl = GEARS.map((g, i) => el("text", { x: gx, y: gy0 + i * gstep + 12, "font-size": 30, "font-family": "Saira", "font-weight": 300, "text-anchor": "middle" }, s));
+  gl.forEach((t, i) => t.textContent = GEARS[i]);
+  const status = el("text", { x: cx, y: 46, fill: "#6e8297", "font-size": 18, "font-family": "Saira", "font-weight": 300, "text-anchor": "middle", "letter-spacing": "3" }, s);
+  // steering: a top-down car in the dial's bottom opening; the front
+  // wheels and the predicted path bend with the wheel
+  const car = el("g", {}, s);
+  const ccx = cx, ccy = 532;
+  const pathL = el("path", { stroke: "url(#aPath)", "stroke-width": 3, fill: "none", "stroke-linecap": "round" }, car);
+  const pathR = el("path", { stroke: "url(#aPath)", "stroke-width": 3, fill: "none", "stroke-linecap": "round" }, car);
+  el("rect", { x: ccx - 17, y: ccy - 30, width: 34, height: 62, rx: 12, fill: "#16222f", stroke: "#4c6378", "stroke-width": 1.5 }, car);
+  el("rect", { x: ccx - 12, y: ccy - 14, width: 24, height: 16, rx: 4, fill: "#0a121b" }, car);
+  const wheels = [-1, 1].map(side => {
+    const w = el("rect", { x: -3.5, y: -8, width: 7, height: 16, rx: 2.5, fill: "#9fb4c8" }, car);
+    return { w, x: ccx + side * 21, y: ccy - 18 };
+  });
+  [-1, 1].forEach(side => el("rect", { x: ccx + side * 21 - 3.5, y: ccy + 12, width: 7, height: 16, rx: 2.5, fill: "#5d7084" }, car));
+  return (v) => {
+    const st = v.steer;
+    wheels.forEach(o => o.w.setAttribute("transform", `translate(${o.x} ${o.y}) rotate(${st * 32})`));
+    [[-17, pathL], [17, pathR]].forEach(([dx, p]) => {
+      const x0 = ccx + dx, y0 = ccy - 32, len = 74;
+      const ex = x0 + st * 58, ey = y0 - len + Math.abs(st) * 14;
+      p.setAttribute("d", `M${x0} ${y0} Q${x0} ${y0 - len * 0.6} ${ex} ${ey}`);
+    });
+    car.setAttribute("opacity", v.on ? 1 : 0.35);
+    const a1 = -135 + 270 * v.speed;
+    arc.setAttribute("d", v.speed > 0.003 ? arcPath(cx, cy, r, -135, a1) : "");
+    const [tx, ty] = pt(cx, cy, r, a1);
+    tip.setAttribute("cx", tx); tip.setAttribute("cy", ty);
+    tip.setAttribute("opacity", v.on ? 1 : 0);
+    speed.textContent = Math.round(v.speed * 100);
+    speed.setAttribute("fill", v.on ? (v.gear == "R" ? "#7fdcff" : "#f2f6fa") : "#2a3644");
+    const ph = 300 * v.power;
+    pow.setAttribute("y", 460 - ph); pow.setAttribute("height", ph);
+    const cap = CAP[v.gear];
+    capLine.setAttribute("y", 460 - 300 * cap - 1);
+    capLine.setAttribute("opacity", v.on && cap > 0 && cap < 1 ? .9 : 0);
+    powTxt.textContent = Math.round(v.power * 100);
+    const gi = GEARS.indexOf(v.gear);
+    pill.setAttribute("y", gy0 + gi * gstep - 26);
+    pill.setAttribute("stroke", v.gear == "R" ? "#ffb23c" : "#29d3ff");
+    gl.forEach((t, i) => t.setAttribute("fill", i == gi ? (v.gear == "R" ? "#ffd08a" : "#eafcff") : "#2f3c4a"));
+    status.textContent = v.on ? "" : "按 START 点火";
+  };
+})();
+
+/* ---------- B: carbon ---------- */
+const B = (() => {
+  const s = document.getElementById("b");
+  const d = el("defs", {}, s);
+  d.innerHTML = `
+    <pattern id="bWeave" width="16" height="16" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <rect width="16" height="16" fill="#101113"/><rect width="8" height="8" fill="#1a1c1f"/><rect x="8" y="8" width="8" height="8" fill="#1a1c1f"/>
+      <rect width="8" height="8" fill="url(#bSheen)"/></pattern>
+    <linearGradient id="bSheen" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".05"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>
+    <radialGradient id="bVig" cx="50%" cy="50%" r="65%"><stop offset=".5" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".85"/></radialGradient>
+    <radialGradient id="bFace" cx="50%" cy="40%" r="60%"><stop offset="0" stop-color="#1c1e22"/><stop offset="1" stop-color="#050506"/></radialGradient>
+    <linearGradient id="bRim" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5a5f66"/><stop offset=".5" stop-color="#1b1d20"/><stop offset="1" stop-color="#3a3e44"/></linearGradient>
+    <linearGradient id="bNeedle" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#ff1e2d"/><stop offset="1" stop-color="#ff6a3c"/></linearGradient>
+    <filter id="bGlow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>`;
+  el("rect", { width: 1024, height: 600, fill: "url(#bWeave)" }, s);
+  el("rect", { width: 1024, height: 600, fill: "url(#bVig)" }, s);
+  // side wings
+  // wings: dim base lines; the lit part grows from the middle outward on
+  // the side the wheel is turned to
+  const wingL = "M290 430 L250 470 L0 470", wingR = "M734 430 L774 470 L1024 470";
+  el("path", { d: "M290 430 L734 430", stroke: "#ff1e2d", "stroke-width": 2, fill: "none", opacity: .35 }, s);
+  [wingL, wingR].forEach(d => el("path", { d, stroke: "#3a1215", "stroke-width": 4, fill: "none" }, s));
+  const litL = el("path", { d: wingL, stroke: "#ff1e2d", "stroke-width": 4, fill: "none", filter: "url(#bGlow)" }, s);
+  const litR = el("path", { d: wingR, stroke: "#ff1e2d", "stroke-width": 4, fill: "none", filter: "url(#bGlow)" }, s);
+  const wingLen = 57 + 250;
+  [litL, litR].forEach(p => { p.setAttribute("stroke-dasharray", `0 ${wingLen}`); });
+  // a small steering wheel that turns with the real one
+  const sw = el("g", {}, s);
+  const swx = 120, swy = 530;
+  el("circle", { cx: swx, cy: swy, r: 30, fill: "none", stroke: "#d8d9db", "stroke-width": 6 }, sw);
+  el("path", { d: `M${swx - 27} ${swy + 4} Q${swx} ${swy - 6} ${swx + 27} ${swy + 4}`, stroke: "#d8d9db", "stroke-width": 6, fill: "none" }, sw);
+  el("line", { x1: swx, y1: swy + 2, x2: swx, y2: swy + 27, stroke: "#d8d9db", "stroke-width": 6 }, sw);
+  el("rect", { x: swx - 3, y: swy - 33, width: 6, height: 9, fill: "#ff1e2d" }, sw);
+  const swTxt = el("text", { x: swx + 48, y: swy + 10, fill: "#d8d9db", "font-size": 28, "font-family": "Barlow Condensed", "font-style": "italic", "font-weight": 800 }, s);
+  const cx = 512, cy = 280, R = 236;
+  el("circle", { cx, cy, r: R + 14, fill: "url(#bRim)" }, s);
+  el("circle", { cx, cy, r: R, fill: "url(#bFace)" }, s);
+  const red = el("path", { stroke: "#ff1e2d", "stroke-width": 18, fill: "none", opacity: .85 }, s);
+  for (let i = 0; i <= 50; i++) {
+    const v = i * 2, deg = -120 + v * 2.4, major = i % 5 == 0;
+    const [x0, y0] = pt(cx, cy, R - 8, deg), [x1, y1] = pt(cx, cy, R - (major ? 34 : 20), deg);
+    el("line", { x1: x0, y1: y0, x2: x1, y2: y1, stroke: "#e9e9ea", "stroke-width": major ? 4 : 1.5, opacity: major ? 1 : .6 }, s);
+    if (major) {
+      const [tx, ty] = pt(cx, cy, R - 64, deg);
+      el("text", { x: tx, y: ty + 11, fill: "#f2f2f3", "font-size": 30, "font-family": "Barlow Condensed", "font-style": "italic", "font-weight": 800, "text-anchor": "middle" }, s).textContent = v / 10;
+    }
+  }
+  el("text", { x: cx, y: cy - 92, fill: "#7b7f86", "font-size": 14, "font-family": "Barlow Condensed", "font-weight": 500, "text-anchor": "middle", "letter-spacing": "4" }, s).textContent = "动力 ×10%";
+  const needle = el("g", { filter: "url(#bGlow)" }, s);
+  el("polygon", { points: `${cx - 4},${cy + 26} ${cx + 4},${cy + 26} ${cx + 1.5},${cy - R + 30} ${cx - 1.5},${cy - R + 30}`, fill: "url(#bNeedle)" }, needle);
+  el("circle", { cx, cy, r: 44, fill: "#0b0b0c", stroke: "#2c2f34", "stroke-width": 3 }, s);
+  const gear = el("text", { x: cx, y: cy + 20, fill: "#fff", "font-size": 58, "font-family": "Barlow Condensed", "font-style": "italic", "font-weight": 800, "text-anchor": "middle" }, s);
+  const speed = el("text", { x: cx, y: cy + 140, fill: "#fff", "font-size": 64, "font-family": "Barlow Condensed", "font-style": "italic", "font-weight": 800, "text-anchor": "middle" }, s);
+  el("text", { x: cx, y: cy + 166, fill: "#7b7f86", "font-size": 14, "font-family": "Barlow Condensed", "font-weight": 500, "text-anchor": "middle", "letter-spacing": "4" }, s).textContent = "车速 %";
+  // shift lights across the top
+  const leds = [];
+  for (let i = 0; i < 12; i++) {
+    const x = 512 - 6 * 34 + i * 34 + 17;
+    leds.push(el("circle", { cx: x, cy: 22, r: 9, fill: "#1a1b1e", stroke: "#2b2d31", "stroke-width": 1.5 }, s));
+  }
+  const status = el("text", { x: cx, y: 560, fill: "#9a9ea5", "font-size": 22, "font-family": "Barlow Condensed", "font-weight": 500, "text-anchor": "middle", "letter-spacing": "3" }, s);
+  return (v) => {
+    const deg = -120 + 240 * v.power;
+    needle.setAttribute("transform", `rotate(${deg} ${cx} ${cy})`);
+    const cap = CAP[v.gear];
+    red.setAttribute("d", v.on && cap > 0 && cap < 1 ? arcPath(cx, cy, R - 18, -120 + 240 * cap, 120) : arcPath(cx, cy, R - 18, 108, 120));
+    gear.textContent = v.gear;
+    gear.setAttribute("fill", !v.on ? "#3a3c40" : v.gear == "R" ? "#ffb23c" : "#fff");
+    speed.textContent = Math.round(v.speed * 100);
+    speed.setAttribute("fill", v.on ? "#fff" : "#3a3c40");
+    const lit = Math.round(v.power * 12);
+    leds.forEach((l, i) => {
+      const c = i < 6 ? "#2ee86b" : i < 10 ? "#ffcc1e" : "#ff1e2d";
+      l.setAttribute("fill", v.on && i < lit ? c : "#1a1b1e");
+      l.setAttribute("filter", v.on && i < lit ? "url(#bGlow)" : "");
+    });
+    status.textContent = v.on ? "" : "按 START 点火";
+    const st = v.steer, len = Math.abs(st) * wingLen;
+    litL.setAttribute("stroke-dasharray", `${st < 0 ? len : 0} ${wingLen}`);
+    litR.setAttribute("stroke-dasharray", `${st > 0 ? len : 0} ${wingLen}`);
+    sw.setAttribute("transform", `rotate(${st * 135} ${swx} ${swy})`);
+    const sdeg = Math.round(st * 135);
+    swTxt.textContent = sdeg == 0 ? "0°" : (sdeg < 0 ? "L " : "R ") + Math.abs(sdeg) + "°";
+  };
+})();
+
+/* ---------- demo ---------- */
+const state = { on: false, gear: "N", power: 0, speed: 0, steer: 0 };
+let clock = 0;
+const script = [
+  [1.2, { on: false, gear: "N", gas: 0 }], [0.8, { on: true, gear: "N", gas: 0 }],
+  [0.6, { gear: "1", gas: 0 }], [1.6, { gear: "1", gas: 1 }], [1.4, { gear: "2", gas: 1 }],
+  [2.2, { gear: "3", gas: 1 }], [2.4, { gear: "3", gas: 0 }], [1.4, { gear: "3", gas: 0, brake: 1 }],
+  [0.6, { gear: "N", gas: 0 }], [0.6, { gear: "R", gas: 0 }], [1.8, { gear: "R", gas: 0.8 }],
+  [1.4, { gear: "R", gas: 0, brake: 1 }], [0.8, { gear: "N", gas: 0 }],
+];
+let demo = true, step = 0, t = 0, last = performance.now(), cmd = script[0][1];
+function tick(now) {
+  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  if (demo) {
+    t += dt;
+    if (t > script[step][0]) { t = 0; step = (step + 1) % script.length; }
+    cmd = Object.assign({ brake: 0 }, script[step][1]);
+    if (cmd.on !== undefined) state.on = cmd.on;
+    state.gear = cmd.gear;
+    const cap = CAP[state.gear], sign = state.gear == "R" ? -1 : 1;
+    const target = cmd.gas * cap * sign;
+    if (cmd.brake) state.speed -= Math.sign(state.speed) * Math.min(Math.abs(state.speed), 2.5 * dt);
+    else if (Math.abs(target) > Math.abs(state.speed)) state.speed += Math.sign(target - state.speed) * Math.min(Math.abs(target - state.speed), 3 * dt);
+    else state.speed -= Math.sign(state.speed - target) * Math.min(Math.abs(state.speed - target), 0.4 * dt);
+    state.power = cmd.brake ? 0 : Math.abs(cmd.gas > 0 ? Math.max(Math.abs(state.speed), cmd.gas * cap * 0.98) : state.speed);
+    clock += dt;
+    state.steer = state.on ? 0.75 * Math.sin(clock * 1.1) * Math.min(1, Math.abs(state.speed) * 3 + 0.2) : 0;
+    document.getElementById("str").value = Math.round(state.steer * 100);
+    document.getElementById("spd").value = Math.round(Math.abs(state.speed) * 100);
+    document.getElementById("pwr").value = Math.round(state.power * 100);
+  }
+  const v = { on: state.on, gear: state.gear, power: Math.min(1, state.power), speed: Math.min(1, Math.abs(state.speed)), steer: state.steer };
+  A(v); B(v);
+  requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+const demoBtn = document.getElementById("demo");
+demoBtn.onclick = () => { demo = !demo; demoBtn.classList.toggle("on", demo); };
+function manual() { demo = false; demoBtn.classList.remove("on"); state.on = true; }
+document.getElementById("spd").oninput = e => { manual(); state.speed = e.target.value / 100 * (state.gear == "R" ? -1 : 1); };
+document.getElementById("pwr").oninput = e => { manual(); state.power = e.target.value / 100; };
+document.getElementById("str").oninput = e => { manual(); state.steer = e.target.value / 100; };
+document.querySelectorAll("[data-g]").forEach(b => b.onclick = () => { manual(); state.gear = b.dataset.g; });
+</script>
+</body>
+</html>

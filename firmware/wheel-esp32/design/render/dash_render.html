@@ -1,0 +1,143 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<!-- Static layers and textures for the P4 dashboards, one per URL hash.
+     Same drawing as ../dash_concepts.html minus everything that moves;
+     build_assets.py screenshots each one with headless Chrome. -->
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:ital,wght@1,800&family=Saira:wght@300&display=swap" rel="stylesheet">
+<style>
+  html, body { margin: 0; background: transparent; overflow: hidden; }
+  svg { display: block; }
+</style>
+</head>
+<body>
+<svg id="s"></svg>
+<script>
+const NS = "http://www.w3.org/2000/svg";
+function el(tag, attrs, parent) {
+  const e = document.createElementNS(NS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (parent) parent.appendChild(e);
+  return e;
+}
+const rad = d => (d - 90) * Math.PI / 180;
+function pt(cx, cy, r, deg) { return [cx + r * Math.cos(rad(deg)), cy + r * Math.sin(rad(deg))]; }
+function arcPath(cx, cy, r, a0, a1) {
+  const [x0, y0] = pt(cx, cy, r, a0), [x1, y1] = pt(cx, cy, r, a1);
+  const large = (a1 - a0) % 360 > 180 ? 1 : 0;
+  return `M${x0} ${y0} A${r} ${r} 0 ${large} 1 ${x1} ${y1}`;
+}
+const s = document.getElementById("s");
+function size(w, h) {
+  s.setAttribute("width", w); s.setAttribute("height", h); s.setAttribute("viewBox", `0 0 ${w} ${h}`);
+}
+
+// ---- A: obsidian -------------------------------------------------------------
+const A_CX = 512, A_CY = 318, A_R = 222;
+
+function aBg() {
+  size(1024, 600);
+  el("defs", {}, s).innerHTML = `
+    <radialGradient id="aBg" cx="50%" cy="46%" r="70%"><stop offset="0" stop-color="#0d1824"/><stop offset=".55" stop-color="#05080c"/><stop offset="1" stop-color="#000"/></radialGradient>
+    <filter id="aSoft"><feGaussianBlur stdDeviation="18"/></filter>`;
+  el("rect", { width: 1024, height: 600, fill: "url(#aBg)" }, s);
+  const cx = A_CX, cy = A_CY, r = A_R;
+  el("circle", { cx, cy, r: 170, fill: "#0a1a2a", opacity: .55, filter: "url(#aSoft)" }, s);
+  for (let i = 0; i <= 100; i++) {
+    const deg = -135 + i * 2.7, major = i % 10 == 0;
+    const [x0, y0] = pt(cx, cy, r + 18, deg), [x1, y1] = pt(cx, cy, r + (major ? 34 : 24), deg);
+    el("line", { x1: x0, y1: y0, x2: x1, y2: y1, stroke: major ? "#8fa3b8" : "#2a3644", "stroke-width": major ? 2 : 1, "stroke-linecap": "round" }, s);
+    if (major) {
+      const [tx, ty] = pt(cx, cy, r + 56, deg);
+      el("text", { x: tx, y: ty + 5, fill: "#5f7184", "font-size": 15, "font-family": "Saira", "font-weight": 300, "text-anchor": "middle" }, s).textContent = i;
+    }
+  }
+  el("path", { d: arcPath(cx, cy, r, -135, 135), stroke: "#121c27", "stroke-width": 6, fill: "none", "stroke-linecap": "round" }, s);
+  // power bar track
+  el("rect", { x: 96, y: 160, width: 8, height: 300, rx: 4, fill: "#121c27" }, s);
+  // car body and rear wheels (front wheels and the path move)
+  const ccx = 512, ccy = 532;
+  el("rect", { x: ccx - 17, y: ccy - 30, width: 34, height: 62, rx: 12, fill: "#16222f", stroke: "#4c6378", "stroke-width": 1.5 }, s);
+  el("rect", { x: ccx - 12, y: ccy - 14, width: 24, height: 16, rx: 4, fill: "#0a121b" }, s);
+  [-1, 1].forEach(side => el("rect", { x: ccx + side * 21 - 3.5, y: ccy + 12, width: 7, height: 16, rx: 2.5, fill: "#5d7084" }, s));
+}
+
+// The lit speed arc, full sweep: LVGL shows the part up to the speed.
+// 476 x 476 = the LVGL arc object; the line sits at radius 222.
+function aArc() {
+  const W = 476, c = W / 2;
+  size(W, W);
+  el("defs", {}, s).innerHTML = `
+    <linearGradient id="g" gradientUnits="userSpaceOnUse" x1="${c - 160}" y1="${c + 160}" x2="${c + 160}" y2="${c - 160}">
+      <stop offset="0" stop-color="#1b6dff"/><stop offset=".6" stop-color="#29d3ff"/><stop offset="1" stop-color="#e9fbff"/></linearGradient>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%"><feGaussianBlur stdDeviation="6" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>`;
+  // a full circle so every angle has texture; LVGL masks the sweep
+  el("circle", { cx: c, cy: c, r: A_R, stroke: "url(#g)", "stroke-width": 6, fill: "none", filter: "url(#glow)" }, s);
+}
+
+function aTip() {
+  size(48, 48);
+  el("defs", {}, s).innerHTML = `<filter id="glow" x="-100%" y="-100%" width="300%" height="300%"><feGaussianBlur stdDeviation="6" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>`;
+  el("circle", { cx: 24, cy: 24, r: 7, fill: "#eafcff", filter: "url(#glow)" }, s);
+}
+
+// ---- B: carbon ---------------------------------------------------------------
+const B_CX = 512, B_CY = 280, B_R = 236;
+
+function bBg() {
+  size(1024, 600);
+  el("defs", {}, s).innerHTML = `
+    <pattern id="bWeave" width="16" height="16" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <rect width="16" height="16" fill="#101113"/><rect width="8" height="8" fill="#1a1c1f"/><rect x="8" y="8" width="8" height="8" fill="#1a1c1f"/>
+      <rect width="8" height="8" fill="url(#bSheen)"/></pattern>
+    <linearGradient id="bSheen" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".05"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>
+    <radialGradient id="bVig" cx="50%" cy="50%" r="65%"><stop offset=".5" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".85"/></radialGradient>
+    <radialGradient id="bFace" cx="50%" cy="40%" r="60%"><stop offset="0" stop-color="#1c1e22"/><stop offset="1" stop-color="#050506"/></radialGradient>
+    <linearGradient id="bRim" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#5a5f66"/><stop offset=".5" stop-color="#1b1d20"/><stop offset="1" stop-color="#3a3e44"/></linearGradient>`;
+  el("rect", { width: 1024, height: 600, fill: "url(#bWeave)" }, s);
+  el("rect", { width: 1024, height: 600, fill: "url(#bVig)" }, s);
+  el("path", { d: "M290 430 L734 430", stroke: "#ff1e2d", "stroke-width": 2, fill: "none", opacity: .35 }, s);
+  ["M290 430 L250 470 L0 470", "M734 430 L774 470 L1024 470"].forEach(d => el("path", { d, stroke: "#3a1215", "stroke-width": 4, fill: "none" }, s));
+  const cx = B_CX, cy = B_CY, R = B_R;
+  el("circle", { cx, cy, r: R + 14, fill: "url(#bRim)" }, s);
+  el("circle", { cx, cy, r: R, fill: "url(#bFace)" }, s);
+  for (let i = 0; i <= 50; i++) {
+    const v = i * 2, deg = -120 + v * 2.4, major = i % 5 == 0;
+    const [x0, y0] = pt(cx, cy, R - 8, deg), [x1, y1] = pt(cx, cy, R - (major ? 34 : 20), deg);
+    el("line", { x1: x0, y1: y0, x2: x1, y2: y1, stroke: "#e9e9ea", "stroke-width": major ? 4 : 1.5, opacity: major ? 1 : .6 }, s);
+    if (major) {
+      const [tx, ty] = pt(cx, cy, R - 64, deg);
+      el("text", { x: tx, y: ty + 11, fill: "#f2f2f3", "font-size": 30, "font-family": "Barlow Condensed", "font-style": "italic", "font-weight": 800, "text-anchor": "middle" }, s).textContent = v / 10;
+    }
+  }
+  // shift lights, off
+  for (let i = 0; i < 12; i++) {
+    el("circle", { cx: 512 - 6 * 34 + i * 34 + 17, cy: 22, r: 9, fill: "#1a1b1e", stroke: "#2b2d31", "stroke-width": 1.5 }, s);
+  }
+}
+
+// Needle pointing up; pivot at (20, 221) = the dial centre.
+function bNeedle() {
+  size(40, 262);
+  el("defs", {}, s).innerHTML = `
+    <linearGradient id="n" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#ff1e2d"/><stop offset="1" stop-color="#ff6a3c"/></linearGradient>
+    <filter id="glow" x="-100%" y="-10%" width="300%" height="120%"><feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>`;
+  const px = 20, py = 221;
+  el("polygon", { points: `${px - 4},${py + 26} ${px + 4},${py + 26} ${px + 1.5},${py - B_R + 30} ${px - 1.5},${py - B_R + 30}`, fill: "url(#n)", filter: "url(#glow)" }, s);
+}
+
+function bWheel() {
+  size(80, 80);
+  const swx = 40, swy = 40;
+  el("circle", { cx: swx, cy: swy, r: 30, fill: "none", stroke: "#d8d9db", "stroke-width": 6 }, s);
+  el("path", { d: `M${swx - 27} ${swy + 4} Q${swx} ${swy - 6} ${swx + 27} ${swy + 4}`, stroke: "#d8d9db", "stroke-width": 6, fill: "none" }, s);
+  el("line", { x1: swx, y1: swy + 2, x2: swx, y2: swy + 27, stroke: "#d8d9db", "stroke-width": 6 }, s);
+  el("rect", { x: swx - 3, y: swy - 33, width: 6, height: 9, fill: "#ff1e2d" }, s);
+}
+
+const R = { "a-bg": aBg, "a-arc": aArc, "a-tip": aTip, "b-bg": bBg, "b-needle": bNeedle, "b-wheel": bWheel };
+(R[location.hash.slice(1)] || aBg)();
+</script>
+</body>
+</html>

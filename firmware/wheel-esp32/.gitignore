@@ -7,3 +7,4 @@ build-p4/
 sdkconfig.p4
 sdkconfig.p4.old
 dependencies.lock.*
+design/render/preview/

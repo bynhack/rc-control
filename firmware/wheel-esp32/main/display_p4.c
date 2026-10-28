@@ -119,9 +119,11 @@ static const char *const TEXT[T_COUNT][2] = {
     [T_STATUS] = {"状态信息", "狀態資訊"},
     [T_WHEEL] = {"方向盘", "方向盤"},
     [T_NO_LINK] = {"车未连线", "車未連線"},
-    [T_DASH_SPORT] = {"运动", "運動"},
-    [T_DASH_CLASSIC] = {"经典", "經典"},
-    [T_DASH_RACE] = {"赛道", "賽道"},
+    [T_DASH_A] = {"曜石", "曜石"},
+    [T_DASH_B] = {"碳纤", "碳纖"},
+    [T_CAP_SPEED] = {"车速 %", "車速 %"},
+    [T_CAP_POWER] = {"动力", "動力"},
+    [T_CAP_POWER10] = {"动力 ×10%", "動力 ×10%"},
 };
 
 static lang_t s_lang = LANG_SC;
@@ -594,8 +596,12 @@ static void show_drive(const display_state_t *s) {
         .throttle = thr,
         .speed = c->speed,
         .cap = c->gear == GEAR_N ? 0.0f : c->gear_max,
+        .steer = s->wheel ? c->steering : 0.0f,
     };
     dash_show(&v);
+    if (lv_obj_get_y(s_notice) != dash_notice_y()) {
+        lv_obj_set_y(s_notice, dash_notice_y());
+    }
 
     // One line for whatever needs the driver's attention, most urgent first.
     int n = notice_id(c->notice);
