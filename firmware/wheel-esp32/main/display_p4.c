@@ -122,6 +122,9 @@ static const char *const TEXT[T_COUNT][2] = {
     [T_DASH_B] = {"碳纤", "碳纖"},
     [T_CAP_SPEED] = {"km/h", "km/h"},
     [T_TAB_DRIVE] = {"驾驶设置", "駕駛設定"},
+    [T_FFB] = {"方向盘力回馈", "方向盤力回饋"},
+    [T_FFB_HINT] = {"车速越快，方向盘回正越有力；停车时很轻。第一次试的时候手轻扶方向盘，从小往大调。0% 关闭。",
+                    "車速越快，方向盤回正越有力；停車時很輕。第一次試的時候手輕扶方向盤，從小往大調。0% 關閉。"},
     [T_TOP_SPEED] = {"最高车速", "最高車速"},
     [T_TOP_HINT] = {"车上没有测速器：仪表的车速 = 估算的速度比例 × 最高车速。按这台车的实际极速填写。",
                     "車上沒有測速器：儀表的車速 = 估算的速度比例 × 最高車速。按這台車的實際極速填寫。"},
@@ -400,6 +403,13 @@ static lv_obj_t *setup_label(lv_obj_t *p, int x, int y, int id) {
     return l;
 }
 
+static lv_obj_t *s_ffb_val;
+
+static void on_ffb(lv_event_t *e) {
+    int v = ui_ffb_get() + (int)(intptr_t)lv_event_get_user_data(e);
+    ui_ffb_set(v < 0 ? 0 : (v > 100 ? 100 : v));
+}
+
 static void on_kmh(lv_event_t *e) {
     int v = s_kmh + (int)(intptr_t)lv_event_get_user_data(e);
     s_kmh = v < 5 ? 5 : (v > 150 ? 150 : v);
@@ -424,6 +434,23 @@ static void build_drive_tab(lv_obj_t *t) {
     lv_obj_set_width(hint, 1024 - 2 * (M + 8));
     lv_label_set_long_mode(hint, LV_LABEL_LONG_WRAP);
     lv_obj_set_pos(hint, M + 8, 190);
+
+    setup_label(t, M + 8, 270, T_FFB);
+    static const int fsteps[4] = {-10, -5, 5, 10};
+    static const char *fnames[4] = {"-10", "-5", "+5", "+10"};
+    for (int i = 0; i < 4; i++) {
+        int x = M + 8 + i * 76 + (i >= 2 ? 200 : 0);
+        lv_obj_t *b = button(t, x, 294, 68, 56, C_DIM, &lv_font_montserrat_20, fnames[i]);
+        lv_obj_add_event_cb(b, on_ffb, LV_EVENT_CLICKED, (void *)(intptr_t)fsteps[i]);
+    }
+    s_ffb_val = label(t, &lv_font_montserrat_32, C_TEXT, "");
+    lv_obj_set_width(s_ffb_val, 190);
+    lv_obj_set_style_text_align(s_ffb_val, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_pos(s_ffb_val, M + 8 + 2 * 76, 304);
+    lv_obj_t *fh = track(label(t, &cjk_16, C_DIM, ""), T_FFB_HINT);
+    lv_obj_set_width(fh, 1024 - 2 * (M + 8));
+    lv_label_set_long_mode(fh, LV_LABEL_LONG_WRAP);
+    lv_obj_set_pos(fh, M + 8, 372);
 }
 
 // Full-screen page over the dashboard, hidden until RADIO is tapped.
@@ -729,6 +756,8 @@ static void show_setup(const display_state_t *s) {
     }
     snprintf(buf, sizeof(buf), "%d km/h", s_kmh);
     set_text(s_kmh_val, buf);
+    snprintf(buf, sizeof(buf), "%d%%", ui_ffb_get());
+    set_text(s_ffb_val, buf);
     for (int i = 0; i < MULTI_PROTO_COUNT && i < 16; i++) {
         highlight(s_proto_btn[i], c->proto == i, c->kind == RADIO_MULTI_SERIAL ? C_AMBER : C_DIM);
     }

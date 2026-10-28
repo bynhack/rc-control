@@ -52,3 +52,7 @@ void ui_dash_set(int dash);
 // the dashboard (there is no speed sensor). Default 30.
 int ui_topspeed_get(void);
 void ui_topspeed_set(int kmh);
+
+// Force feedback strength on the wheel base, 0..100 % (ffb.c). Default 40.
+int ui_ffb_get(void);
+void ui_ffb_set(int pct);

@@ -15,6 +15,7 @@
 //   P (32)              emergency stop
 //   N (19)              bind the MULTI module
 
+#include <math.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -29,6 +30,7 @@
 #include "control.h"
 #include "crsf.h"
 #include "display.h"
+#include "ffb.h"
 #include "multi.h"
 #include "radio.h"
 #include "wheel.h"
@@ -175,6 +177,7 @@ static void interface_callback(hid_host_device_handle_t handle, const hid_host_i
         }
         case HID_HOST_INTERFACE_EVENT_DISCONNECTED:
             ESP_LOGW(TAG, "interface disconnected");
+            ffb_detach();
             hid_host_device_close(handle);
             portENTER_CRITICAL(&s_lock);
             s_vid = s_pid = 0;
@@ -204,7 +207,7 @@ static void open_device(hid_host_device_handle_t handle) {
     const hid_host_device_config_t config = {.callback = interface_callback, .callback_arg = NULL};
     ESP_ERROR_CHECK(hid_host_device_open(handle, &config));
 
-    hid_host_dev_info_t info;
+    hid_host_dev_info_t info = {0};
     if (hid_host_get_device_info(handle, &info) == ESP_OK) {
         const char *name = wheel_name(info.VID, info.PID);
         ESP_LOGI(TAG, "device %04x:%04x  %ls / %ls  (%s)", info.VID, info.PID, info.iManufacturer, info.iProduct,
@@ -223,6 +226,9 @@ static void open_device(hid_host_device_handle_t handle) {
         }
     }
     ESP_ERROR_CHECK(hid_host_device_start(handle));
+    if (info.VID == MOZA_VID) {
+        ffb_attach(handle);
+    }
 }
 
 static void usb_lib_task(void *arg) {
@@ -236,6 +242,29 @@ static void usb_lib_task(void *arg) {
             usb_host_device_free_all();
         }
     }
+}
+
+// Force feedback like a car with power steering: light when parked, the
+// self-centring grows with speed, a little damping for weight.
+#define FFB_SPRING_OFF 0.10f
+#define FFB_SPRING_SLOW 0.15f
+#define FFB_SPRING_FAST 0.70f
+#define FFB_DAMPER_OFF 0.25f
+#define FFB_DAMPER_SLOW 0.15f
+#define FFB_DAMPER_FAST 0.35f
+
+static void drive_ffb(const control_view_t *c, bool fresh) {
+    if (!fresh) {
+        ffb_set(0.0f, 0.0f);
+        return;
+    }
+    if (!c->engine) {
+        ffb_set(FFB_SPRING_OFF, FFB_DAMPER_OFF);
+        return;
+    }
+    float v = fabsf(c->speed);
+    ffb_set(FFB_SPRING_SLOW + (FFB_SPRING_FAST - FFB_SPRING_SLOW) * v,
+            FFB_DAMPER_SLOW + (FFB_DAMPER_FAST - FFB_DAMPER_SLOW) * v);
 }
 
 static void ui_task(void *arg) {
@@ -275,6 +304,7 @@ static void ui_task(void *arg) {
             .button = (button && now - button_at < (int64_t)BUTTON_SHOW_MS * 1000) ? button : 0,
         };
         display_show(&ds);
+        drive_ffb(&ds.ctl, fresh);
 
         if (tick % PRINT_EVERY != 0) {
             continue;

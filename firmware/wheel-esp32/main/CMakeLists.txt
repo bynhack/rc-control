@@ -1,4 +1,4 @@
-set(srcs "main.c" "wheel.c" "display.c" "control.c" "crsf.c" "multi.c" "radio.c")
+set(srcs "main.c" "wheel.c" "display.c" "control.c" "crsf.c" "multi.c" "radio.c" "ffb.c")
 set(embed "")
 if(IDF_TARGET STREQUAL "esp32p4")
     # The 7" dashboard: its fonts (fonts/gen_fonts.sh) and images

@@ -1,0 +1,190 @@
+#include "ffb.h"
+
+#include <math.h>
+#include <string.h>
+
+#include "esp_log.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "radio.h"
+#include "usb/hid.h"
+
+static const char *TAG = "ffb";
+
+// PID report ids, from the R5's report descriptor.
+#define RID_SET_EFFECT 0x01
+#define RID_SET_CONDITION 0x03
+#define RID_EFFECT_OP 0x0a
+#define RID_DEVICE_CONTROL 0x0c
+#define RID_DEVICE_GAIN 0x0d
+#define RID_CREATE_EFFECT 0x11
+#define RID_BLOCK_LOAD 0x12
+
+// Effect type: 1-based index into the descriptor's list.
+#define ET_SPRING 8
+#define ET_DAMPER 9
+#define OP_START 1
+#define CTRL_ENABLE_ACTUATORS 0x01
+#define CTRL_RESET 0x08
+#define DURATION_INFINITE 0xffff
+#define LOAD_SUCCESS 1
+
+#define PERIOD_MS 50
+// Resend a coefficient only when it moves at least this much (of 32767).
+#define MIN_CHANGE 300
+
+typedef struct {
+    uint8_t block; // 0 = not created
+    int last;      // last coefficient sent, -1 = none
+} effect_t;
+
+static portMUX_TYPE s_lock = portMUX_INITIALIZER_UNLOCKED;
+static hid_host_device_handle_t s_dev;
+static bool s_attach_pending;
+static float s_spring, s_damper;
+static effect_t s_fx[2];
+static int s_gain = -1;
+
+static esp_err_t out(uint8_t *r, size_t len) {
+    return hid_class_request_set_report(s_dev, HID_REPORT_TYPE_OUTPUT, r[0], r, len);
+}
+
+static void put16(uint8_t *p, int v) {
+    p[0] = (uint8_t)v;
+    p[1] = (uint8_t)(v >> 8);
+}
+
+// Create New Effect, then read the block index the base gave it.
+static uint8_t create(uint8_t type) {
+    uint8_t c[4] = {RID_CREATE_EFFECT, type, 0, 0};
+    if (hid_class_request_set_report(s_dev, HID_REPORT_TYPE_FEATURE, c[0], c, sizeof(c)) != ESP_OK) {
+        return 0;
+    }
+    uint8_t r[5] = {0};
+    size_t len = sizeof(r);
+    if (hid_class_request_get_report(s_dev, HID_REPORT_TYPE_FEATURE, RID_BLOCK_LOAD, r, &len) != ESP_OK) {
+        return 0;
+    }
+    // r: id, block index, load status, RAM pool available
+    if (r[2] != LOAD_SUCCESS) {
+        ESP_LOGW(TAG, "effect %d not loaded (status %d)", type, r[2]);
+        return 0;
+    }
+    return r[1];
+}
+
+static esp_err_t set_effect(uint8_t block, uint8_t type) {
+    uint8_t r[22] = {RID_SET_EFFECT, block, type};
+    put16(r + 3, DURATION_INFINITE); // duration
+    // trigger repeat, sample period, start delay: 0
+    r[11] = 255;   // gain
+    r[12] = 0;     // no trigger button
+    r[13] = 0x01;  // X axis only, direction disabled
+    return out(r, sizeof(r));
+}
+
+// Symmetric condition on X around the centre, full saturation.
+static esp_err_t set_condition(uint8_t block, int coef) {
+    uint8_t r[15] = {RID_SET_CONDITION, block, 0};
+    put16(r + 3, 0);      // centre
+    put16(r + 5, coef);   // positive coefficient
+    put16(r + 7, coef);   // negative coefficient
+    put16(r + 9, 32767);  // positive saturation
+    put16(r + 11, 32767); // negative saturation
+    put16(r + 13, 0);     // dead band
+    return out(r, sizeof(r));
+}
+
+static esp_err_t start(uint8_t block) {
+    uint8_t r[4] = {RID_EFFECT_OP, block, OP_START, 1};
+    return out(r, sizeof(r));
+}
+
+static void setup(void) {
+    uint8_t ctrl[2] = {RID_DEVICE_CONTROL, CTRL_RESET};
+    out(ctrl, sizeof(ctrl));
+    vTaskDelay(pdMS_TO_TICKS(50));
+    ctrl[1] = CTRL_ENABLE_ACTUATORS;
+    out(ctrl, sizeof(ctrl));
+    s_gain = -1;
+    static const uint8_t types[2] = {ET_SPRING, ET_DAMPER};
+    for (int i = 0; i < 2; i++) {
+        s_fx[i] = (effect_t){.block = create(types[i]), .last = -1};
+        if (s_fx[i].block == 0) {
+            continue;
+        }
+        if (set_effect(s_fx[i].block, types[i]) != ESP_OK || set_condition(s_fx[i].block, 0) != ESP_OK ||
+            start(s_fx[i].block) != ESP_OK) {
+            ESP_LOGW(TAG, "effect %d setup failed", types[i]);
+            s_fx[i].block = 0;
+            continue;
+        }
+        s_fx[i].last = 0;
+    }
+    ESP_LOGI(TAG, "spring block %d, damper block %d", s_fx[0].block, s_fx[1].block);
+}
+
+static void task(void *arg) {
+    for (;;) {
+        vTaskDelay(pdMS_TO_TICKS(PERIOD_MS));
+        portENTER_CRITICAL(&s_lock);
+        bool attach = s_attach_pending;
+        s_attach_pending = false;
+        bool have = s_dev != NULL;
+        float want[2] = {s_spring, s_damper};
+        portEXIT_CRITICAL(&s_lock);
+        if (!have) {
+            continue;
+        }
+        if (attach) {
+            vTaskDelay(pdMS_TO_TICKS(200)); // let the base settle after enumeration
+            setup();
+        }
+        int gain = ui_ffb_get() * 255 / 100;
+        if (gain != s_gain) {
+            uint8_t g[2] = {RID_DEVICE_GAIN, (uint8_t)gain};
+            if (out(g, sizeof(g)) == ESP_OK) {
+                s_gain = gain;
+            }
+        }
+        for (int i = 0; i < 2; i++) {
+            if (s_fx[i].block == 0) {
+                continue;
+            }
+            float w = want[i] < 0.0f ? 0.0f : (want[i] > 1.0f ? 1.0f : want[i]);
+            int coef = (int)lroundf(w * 32767.0f);
+            if (s_fx[i].last < 0 || abs(coef - s_fx[i].last) >= MIN_CHANGE ||
+                (coef == 0 && s_fx[i].last != 0)) {
+                if (set_condition(s_fx[i].block, coef) == ESP_OK) {
+                    s_fx[i].last = coef;
+                }
+            }
+        }
+    }
+}
+
+void ffb_attach(hid_host_device_handle_t dev) {
+    static bool started;
+    if (!started) {
+        started = true;
+        xTaskCreatePinnedToCore(task, "ffb", 4096, NULL, 4, NULL, 0);
+    }
+    portENTER_CRITICAL(&s_lock);
+    s_dev = dev;
+    s_attach_pending = true;
+    portEXIT_CRITICAL(&s_lock);
+}
+
+void ffb_detach(void) {
+    portENTER_CRITICAL(&s_lock);
+    s_dev = NULL;
+    portEXIT_CRITICAL(&s_lock);
+    memset(s_fx, 0, sizeof(s_fx));
+}
+
+void ffb_set(float spring, float damper) {
+    portENTER_CRITICAL(&s_lock);
+    s_spring = spring;
+    s_damper = damper;
+    portEXIT_CRITICAL(&s_lock);
+}
