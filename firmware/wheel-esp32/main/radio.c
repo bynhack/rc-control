@@ -14,6 +14,7 @@ static const char *TAG = "radio";
 #define NVS_KEY_KMH "kmh"
 #define DEFAULT_KMH 30
 #define NVS_KEY_FFB "ffb"
+#define NVS_KEY_FLIP "flip"
 #define DEFAULT_FFB 40
 // Bump when radio_config_t changes, so an old blob is ignored.
 #define CFG_VERSION 1
@@ -177,6 +178,25 @@ void ui_ffb_set(int pct) {
     nvs_handle_t h;
     if (nvs_open(NVS_NS, NVS_READWRITE, &h) == ESP_OK) {
         nvs_set_u8(h, NVS_KEY_FFB, (uint8_t)pct);
+        nvs_commit(h);
+        nvs_close(h);
+    }
+}
+
+bool ui_flip_get(void) {
+    uint8_t v = 0;
+    nvs_handle_t h;
+    if (nvs_open(NVS_NS, NVS_READONLY, &h) == ESP_OK) {
+        nvs_get_u8(h, NVS_KEY_FLIP, &v);
+        nvs_close(h);
+    }
+    return v == 1;
+}
+
+void ui_flip_set(bool flip) {
+    nvs_handle_t h;
+    if (nvs_open(NVS_NS, NVS_READWRITE, &h) == ESP_OK) {
+        nvs_set_u8(h, NVS_KEY_FLIP, flip ? 1 : 0);
         nvs_commit(h);
         nvs_close(h);
     }

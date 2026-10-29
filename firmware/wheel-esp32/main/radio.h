@@ -56,3 +56,8 @@ void ui_topspeed_set(int kmh);
 // Force feedback strength on the wheel base, 0..100 % (ffb.c). Default 40.
 int ui_ffb_get(void);
 void ui_ffb_set(int pct);
+
+// The screen turned 180 degrees (for mounting the board upside down); takes
+// effect at the next boot.
+bool ui_flip_get(void);
+void ui_flip_set(bool flip);

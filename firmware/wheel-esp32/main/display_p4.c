@@ -22,6 +22,7 @@
 #include "bsp/display.h"
 #include "bsp/esp-bsp.h"
 #include "esp_log.h"
+#include "esp_system.h"
 #include "lvgl.h"
 #include "dash_p4.h"
 #include "ui_p4.h"
@@ -123,6 +124,9 @@ static const char *const TEXT[T_COUNT][2] = {
     [T_CAP_SPEED] = {"km/h", "km/h"},
     [T_TAB_DRIVE] = {"驾驶设置", "駕駛設定"},
     [T_FFB] = {"方向盘力回馈", "方向盤力回饋"},
+    [T_FLIP] = {"屏幕方向", "螢幕方向"},
+    [T_FLIP_BTN] = {"翻转 180°", "翻轉 180°"},
+    [T_FLIP_HINT] = {"板子倒着装时用。点一下会重启屏幕，再点一下翻回来。", "板子倒著裝時用。點一下會重啟螢幕，再點一下翻回來。"},
     [T_FFB_HINT] = {"车速越快，方向盘回正越有力；停车时很轻。第一次试的时候手轻扶方向盘，从小往大调。0% 关闭。",
                     "車速越快，方向盤回正越有力；停車時很輕。第一次試的時候手輕扶方向盤，從小往大調。0% 關閉。"},
     [T_TOP_SPEED] = {"最高车速", "最高車速"},
@@ -410,6 +414,13 @@ static void on_ffb(lv_event_t *e) {
     ui_ffb_set(v < 0 ? 0 : (v > 100 ? 100 : v));
 }
 
+// The display's rotation is fixed when it starts, so flipping restarts.
+static void on_flip(lv_event_t *e) {
+    ui_flip_set(!ui_flip_get());
+    ESP_LOGI(TAG, "screen flip -> restart");
+    esp_restart();
+}
+
 static void on_kmh(lv_event_t *e) {
     int v = s_kmh + (int)(intptr_t)lv_event_get_user_data(e);
     s_kmh = v < 5 ? 5 : (v > 150 ? 150 : v);
@@ -451,6 +462,13 @@ static void build_drive_tab(lv_obj_t *t) {
     lv_obj_set_width(fh, 1024 - 2 * (M + 8));
     lv_label_set_long_mode(fh, LV_LABEL_LONG_WRAP);
     lv_obj_set_pos(fh, M + 8, 372);
+
+    setup_label(t, M + 8, 440, T_FLIP);
+    lv_obj_t *fb = button(t, M + 8, 464, 260, 56, C_CYAN, &cjk_20, "");
+    track(lv_obj_get_child(fb, 0), T_FLIP_BTN);
+    lv_obj_add_event_cb(fb, on_flip, LV_EVENT_CLICKED, NULL);
+    lv_obj_t *flh = track(label(t, &cjk_16, C_DIM, ""), T_FLIP_HINT);
+    lv_obj_set_pos(flh, M + 8 + 280, 482);
 }
 
 // Full-screen page over the dashboard, hidden until RADIO is tapped.
@@ -560,7 +578,7 @@ static void build_setup(void) {
 void display_init(void) {
     bsp_display_cfg_t cfg = {
         .lv_adapter_cfg = ESP_LV_ADAPTER_DEFAULT_CONFIG(),
-        .rotation = ESP_LV_ADAPTER_ROTATE_0,
+        .rotation = ui_flip_get() ? ESP_LV_ADAPTER_ROTATE_180 : ESP_LV_ADAPTER_ROTATE_0,
         .tear_avoid_mode = ESP_LV_ADAPTER_TEAR_AVOID_MODE_TRIPLE_PARTIAL,
         .touch_flags = {.swap_xy = 0, .mirror_x = 1, .mirror_y = 1},
     };
