@@ -60,6 +60,41 @@ static inline float reso_run(reso_t *r, float x) {
     return y;
 }
 
+// Second-order high-pass (Butterworth). The little speaker can't play
+// below about 150 Hz: driving it there only rattles the cone, which
+// sounds like a broken speaker, and wastes the headroom.
+typedef struct {
+    float b0, b1, b2, a1, a2, x1, x2, y1, y2;
+} hpf_t;
+
+static void hpf_tune(hpf_t *f, float hz) {
+    float w = 2.0f * (float)M_PI * hz / SR, c = cosf(w), al = sinf(w) / (2.0f * 0.7071f);
+    float a0 = 1.0f + al;
+    f->b0 = (1.0f + c) / 2.0f / a0;
+    f->b1 = -(1.0f + c) / a0;
+    f->b2 = f->b0;
+    f->a1 = -2.0f * c / a0;
+    f->a2 = (1.0f - al) / a0;
+}
+
+static inline float hpf_run(hpf_t *f, float x) {
+    float y = f->b0 * x + f->b1 * f->x1 + f->b2 * f->x2 - f->a1 * f->y1 - f->a2 * f->y2;
+    f->x2 = f->x1;
+    f->x1 = x;
+    f->y2 = f->y1;
+    f->y1 = y;
+    return y;
+}
+
+#define SPEAKER_LOW_HZ 150.0f
+
+// Limiter: peaks held to LIM_CEIL of full scale. The gain drops within
+// about a millisecond and comes back over about a tenth of a second.
+#define LIM_CEIL 0.8f
+#define LIM_ATTACK 0.05f
+#define LIM_RECOVER 0.0005f
+#define LIM_RELEASE 0.9995f
+
 // ---- voices ------------------------------------------------------------------
 
 // What makes one car sound unlike another.
@@ -109,7 +144,7 @@ static const voice_t VOICES[SOUND_VOICES] = {
                   .mid_hz = 430, .mid_k = 0.055f, .mid_decay = 0.007f, .high_hz = 2700,
                   .rasp = 1.25f, .rough = 0.05f, .lump = 0.05f, .overrun_rpm = 2500,
                   .pop_chance = 0.07f, .pop_amp = 1.5f, .pop_s = 0.022f, .crackle_chance = 0.22f,
-                  .drive = 1.0f, .turbo = 0.35f, .bov = 0.2f, .cut_s = 0.035f, .blip = true},
+                  .drive = 0.7f, .turbo = 0.35f, .bov = 0.2f, .cut_s = 0.035f, .blip = true},
 };
 
 // ---- engine ------------------------------------------------------------------
@@ -128,7 +163,9 @@ typedef struct {
     float rasp_left;  // seconds of the current firing's noise burst
     float rasp_amp;
     reso_t body, mid, high;
-    float dc_x, dc_y, hiss;
+    hpf_t hpf;
+    float env, lim_gain; // limiter
+    float hiss;
     // Rally extras.
     float boost; // turbo 0..1
     float whistle_ph;
@@ -253,6 +290,10 @@ static float extras_sample(engine_t *e, const voice_t *vc, const control_view_t 
 static void engine_block(engine_t *e, const voice_t *vc, const control_view_t *v, int16_t *out, float master) {
     float want_rpm, want_load;
     target(vc, v, &want_rpm, &want_load);
+    if (e->hpf.b0 == 0) {
+        hpf_tune(&e->hpf, SPEAKER_LOW_HZ);
+        e->lim_gain = 1.0f;
+    }
 
     // Gear changes, the turbo, lifting off.
     if (v->gear != e->last_gear) {
@@ -406,12 +447,20 @@ static void engine_block(engine_t *e, const voice_t *vc, const control_view_t *v
         e->hiss += (noise() - e->hiss) * 0.2f;
         s += e->hiss * 0.05f * e->load * (rpm / vc->red);
         s += extras_sample(e, vc, v, rpm, speed);
-        // DC block, soft clip.
-        float y = s - e->dc_x + 0.995f * e->dc_y;
-        e->dc_x = s;
-        e->dc_y = y;
-        y *= vc->drive;
-        y = y / (1.0f + fabsf(y));
+        // Only what the speaker can play; then a limiter turns the whole
+        // sound down when it gets too loud, instead of clipping the wave
+        // (clipping is what made it crackle like a broken speaker).
+        float y = hpf_run(&e->hpf, s) * vc->drive;
+        float a = fabsf(y);
+        e->env = a > e->env ? a : e->env * LIM_RELEASE;
+        float want = e->env > LIM_CEIL ? LIM_CEIL / e->env : 1.0f;
+        e->lim_gain += (want - e->lim_gain) * (want < e->lim_gain ? LIM_ATTACK : LIM_RECOVER);
+        y *= e->lim_gain;
+        // Anything the limiter was too slow for: round off gently.
+        if (fabsf(y) > 0.9f) {
+            float o = fabsf(y) - 0.9f;
+            y = copysignf(0.9f + o / (1.0f + o * 10.0f), y);
+        }
         out[i] = (int16_t)(y * master * 32000.0f);
     }
 }
