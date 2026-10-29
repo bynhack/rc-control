@@ -576,11 +576,13 @@ static void build_setup(void) {
 }
 
 void display_init(void) {
+    bool flip = ui_flip_get();
     bsp_display_cfg_t cfg = {
         .lv_adapter_cfg = ESP_LV_ADAPTER_DEFAULT_CONFIG(),
-        .rotation = ui_flip_get() ? ESP_LV_ADAPTER_ROTATE_180 : ESP_LV_ADAPTER_ROTATE_0,
+        .rotation = flip ? ESP_LV_ADAPTER_ROTATE_180 : ESP_LV_ADAPTER_ROTATE_0,
         .tear_avoid_mode = ESP_LV_ADAPTER_TEAR_AVOID_MODE_TRIPLE_PARTIAL,
-        .touch_flags = {.swap_xy = 0, .mirror_x = 1, .mirror_y = 1},
+        // The adapter turns the picture but not the touch panel: flip that too.
+        .touch_flags = {.swap_xy = 0, .mirror_x = !flip, .mirror_y = !flip},
     };
     if (bsp_display_start_with_config(&cfg) == NULL) {
         ESP_LOGE(TAG, "display start failed");
