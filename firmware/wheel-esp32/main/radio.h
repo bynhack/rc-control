@@ -61,7 +61,7 @@ void ui_ffb_set(int pct);
 int ui_vol_get(void);
 void ui_vol_set(int pct);
 
-// Which engine sound (sound.h: SOUND_ROAD, SOUND_RALLY). Read every audio
+// Which engine sound (sound.h: SOUND_ROAD, SOUND_RALLY, SOUND_M4). Read every audio
 // block, so cached.
 int ui_sound_get(void);
 void ui_sound_set(int voice);

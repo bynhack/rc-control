@@ -26,6 +26,7 @@
 #include "lvgl.h"
 #include "dash_p4.h"
 #include "ui_p4.h"
+#include "sound.h"
 
 static const char *TAG = "display";
 
@@ -135,6 +136,7 @@ static const char *const TEXT[T_COUNT][2] = {
     [T_SOUND] = {"引擎声浪", "引擎聲浪"},
     [T_SOUND_ROAD] = {"普通轿车", "普通轎車"},
     [T_SOUND_RALLY] = {"拉力赛车", "拉力賽車"},
+    [T_SOUND_M4] = {"宝马 M4", "寶馬 M4"},
     [T_FLIP_HINT] = {"板子倒着装时用。点一下会重启屏幕，再点一下翻回来。", "板子倒著裝時用。點一下會重啟螢幕，再點一下翻回來。"},
     [T_FFB_HINT] = {"车速越快，方向盘回正越有力；停车时很轻。第一次试的时候手轻扶方向盘，从小往大调。0% 关闭。",
                     "車速越快，方向盤回正越有力；停車時很輕。第一次試的時候手輕扶方向盤，從小往大調。0% 關閉。"},
@@ -428,7 +430,7 @@ static void on_ffb(lv_event_t *e) {
 
 static lv_obj_t *s_vol_val;
 
-static lv_obj_t *s_sound_btn[2];
+static lv_obj_t *s_sound_btn[SOUND_VOICES];
 
 static void on_sound(lv_event_t *e) {
     ui_sound_set((int)(intptr_t)lv_event_get_user_data(e));
@@ -492,9 +494,9 @@ static void build_drive_tab(lv_obj_t *t) {
     // the force feedback row.
     const int vx = 600;
     setup_label(t, vx, 88, T_SOUND);
-    static const int sound_names[2] = {T_SOUND_ROAD, T_SOUND_RALLY};
-    for (int i = 0; i < 2; i++) {
-        s_sound_btn[i] = button(t, vx + i * 166, 112, 154, 56, C_AMBER, &cjk_20, "");
+    static const int sound_names[SOUND_VOICES] = {T_SOUND_ROAD, T_SOUND_RALLY, T_SOUND_M4};
+    for (int i = 0; i < SOUND_VOICES; i++) {
+        s_sound_btn[i] = button(t, vx + i * 128, 112, 120, 56, C_AMBER, &cjk_20, "");
         track(lv_obj_get_child(s_sound_btn[i], 0), sound_names[i]);
         lv_obj_add_event_cb(s_sound_btn[i], on_sound, LV_EVENT_CLICKED, (void *)(intptr_t)i);
     }
@@ -825,7 +827,7 @@ static void show_setup(const display_state_t *s) {
     set_text(s_ffb_val, buf);
     snprintf(buf, sizeof(buf), "%d%%", ui_vol_get());
     set_text(s_vol_val, buf);
-    for (int i = 0; i < 2; i++) {
+    for (int i = 0; i < SOUND_VOICES; i++) {
         highlight(s_sound_btn[i], ui_sound_get() == i, C_AMBER);
     }
     for (int i = 0; i < MULTI_PROTO_COUNT && i < 16; i++) {

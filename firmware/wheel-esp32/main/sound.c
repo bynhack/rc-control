@@ -25,7 +25,6 @@ static const char *TAG = "sound";
 #define SPUTTER_S 0.55f
 #define CATCH_S 0.9f
 #define FLARE_S 1.2f
-#define FLARE_RPM 1000.0f // above idle
 #define STARTER_HZ 150.0f
 #define STOP_RPM 150.0f
 
@@ -65,27 +64,52 @@ static inline float reso_run(reso_t *r, float x) {
 
 // What makes one car sound unlike another.
 typedef struct {
-    float idle, red;                   // rpm
+    int cyl;                           // 4: firing Hz = rpm / 30; 6: rpm / 20
+    float idle, red, flare;            // rpm; flare = above idle on starting
     float body_hz, body_k, body_decay; // exhaust: body_hz + rpm * body_k
     float mid_hz, mid_k, mid_decay;    // the bark above it
     float high_hz;                     // rasp
     float rasp;                        // noise per firing
     float rough;                       // firing-to-firing jitter
     float lump;                        // extra jitter at idle
+    float overrun_rpm;                 // pops and crackle above this, off the gas
     float pop_chance, pop_amp, pop_s;  // overrun pops / anti-lag bangs
     float crackle_chance;              // small cracks on the overrun
     float drive;                       // into the soft clip
-    bool rally;                        // turbo, blow-off, dog box, gravel
+    float turbo, bov;                  // whistle, blow-off: 0 = none, 1 = rally
+    float cut_s;                       // upshift ignition cut, ends in a bang
+    bool blip;                         // throttle blip on downshifts
+    float dogbox;                      // straight-cut gear whine and clunk
+    float gravel;                      // stones and rumble
 } voice_t;
 
 static const voice_t VOICES[SOUND_VOICES] = {
     // A plain road car.
-    [SOUND_ROAD] = {900, 7000, 85, 0.018f, 0.030f, 380, 0.030f, 0.009f, 1700, 0.8f, 0.12f, 0.0f,
-                    0.06f, 0.7f, 0.018f, 0.0f, 0.35f, false},
+    [SOUND_ROAD] = {.cyl = 4, .idle = 900, .red = 7000, .flare = 1000,
+                    .body_hz = 85, .body_k = 0.018f, .body_decay = 0.030f,
+                    .mid_hz = 380, .mid_k = 0.030f, .mid_decay = 0.009f, .high_hz = 1700,
+                    .rasp = 0.8f, .rough = 0.12f, .overrun_rpm = 2600,
+                    .pop_chance = 0.06f, .pop_amp = 0.7f, .pop_s = 0.018f, .drive = 0.35f},
     // A turbo four on a rally stage: lumpy idle, harder bark and rasp,
-    // anti-lag bangs and crackle off the throttle.
-    [SOUND_RALLY] = {1100, 8000, 100, 0.020f, 0.022f, 520, 0.045f, 0.006f, 2300, 1.6f, 0.18f, 0.35f,
-                     0.20f, 2.4f, 0.030f, 0.35f, 0.40f, true},
+    // anti-lag bangs and crackle off the throttle, flat shifts, a dog box,
+    // gravel.
+    [SOUND_RALLY] = {.cyl = 4, .idle = 1100, .red = 8000, .flare = 1000,
+                     .body_hz = 100, .body_k = 0.020f, .body_decay = 0.022f,
+                     .mid_hz = 520, .mid_k = 0.045f, .mid_decay = 0.006f, .high_hz = 2300,
+                     .rasp = 1.6f, .rough = 0.18f, .lump = 0.35f, .overrun_rpm = 2200,
+                     .pop_chance = 0.20f, .pop_amp = 2.4f, .pop_s = 0.030f, .crackle_chance = 0.35f,
+                     .drive = 0.40f, .turbo = 1.0f, .bov = 1.0f, .cut_s = 0.07f, .blip = true,
+                     .dogbox = 1.0f, .gravel = 1.0f},
+    // BMW M4: twin-turbo straight six. Smooth and even, a deep but raspy
+    // baritone that hardens with the revs, a loud cold-start flare, quick
+    // gearbox shifts with a short "brap", crackle on the overrun, the turbos
+    // only a faint hiss.
+    [SOUND_M4] = {.cyl = 6, .idle = 750, .red = 7200, .flare = 1400,
+                  .body_hz = 95, .body_k = 0.016f, .body_decay = 0.028f,
+                  .mid_hz = 430, .mid_k = 0.055f, .mid_decay = 0.007f, .high_hz = 2700,
+                  .rasp = 1.25f, .rough = 0.05f, .lump = 0.05f, .overrun_rpm = 2500,
+                  .pop_chance = 0.07f, .pop_amp = 1.5f, .pop_s = 0.022f, .crackle_chance = 0.22f,
+                  .drive = 1.0f, .turbo = 0.35f, .bov = 0.2f, .cut_s = 0.035f, .blip = true},
 };
 
 // ---- engine ------------------------------------------------------------------
@@ -120,7 +144,7 @@ typedef struct {
 } engine_t;
 
 // Slightly uneven cylinders give the beat a real engine has.
-static const float CYL_GAIN[4] = {1.0f, 0.84f, 1.08f, 0.92f};
+static const float CYL_GAIN[6] = {1.0f, 0.84f, 1.08f, 0.92f, 1.03f, 0.89f};
 
 // Where the revs want to be, from the driving model.
 static void target(const voice_t *vc, const control_view_t *v, float *rpm, float *load) {
@@ -179,16 +203,16 @@ static float starter_sample(engine_t *e, bool cranking, float *x_body) {
     return amp * whine;
 }
 
-// The rally car's extras, one sample: turbo whistle, blow-off chatter,
-// straight-cut gear whine, gravel under the tyres.
-static float rally_sample(engine_t *e, const control_view_t *v, float rpm, float speed) {
+// Everything but the exhaust, one sample, each part scaled by the voice:
+// turbo whistle, blow-off chatter, straight-cut gear whine, gravel.
+static float extras_sample(engine_t *e, const voice_t *vc, const control_view_t *v, float rpm, float speed) {
     float out = 0;
     // Turbo: a whistle that climbs with the boost, and a rush of air.
     if (e->boost > 0.02f) {
         e->whistle_ph += (2600.0f + 5200.0f * e->boost) / SR;
         e->whistle_ph -= (int)e->whistle_ph;
-        out += 0.10f * e->boost * e->boost * sinf(2.0f * (float)M_PI * e->whistle_ph);
-        out += 0.04f * e->boost * noise();
+        out += vc->turbo * 0.10f * e->boost * e->boost * sinf(2.0f * (float)M_PI * e->whistle_ph);
+        out += vc->turbo * 0.04f * e->boost * noise();
     }
     // Blow-off: "pssh", fluttering as the valve chatters.
     float x_bov = 0;
@@ -197,26 +221,29 @@ static float rally_sample(engine_t *e, const control_view_t *v, float rpm, float
         e->bov_t += 1.0f / SR;
         float env = e->bov_left / 0.45f;
         float flutter = sinf(2.0f * (float)M_PI * 19.0f * e->bov_t) > 0 ? 1.0f : 0.45f;
-        x_bov = noise() * 2.2f * e->bov_amp * env * env * flutter;
+        x_bov = noise() * 2.2f * vc->bov * e->bov_amp * env * env * flutter;
     }
     out += 0.5f * reso_run(&e->bov, x_bov);
     // Straight-cut gears whine with the revs in gear, louder off the
     // throttle; the diff whines with road speed.
-    if (v->engine && v->gear != GEAR_N && speed > 0.01f) {
+    if (vc->dogbox > 0 && v->engine && v->gear != GEAR_N && speed > 0.01f) {
         float on = fminf(speed * 5.0f, 1.0f);
         e->whine_ph += rpm * 0.40f / SR;
         e->whine_ph -= (int)e->whine_ph;
         e->diff_ph += (180.0f + 1900.0f * speed) / SR;
         e->diff_ph -= (int)e->diff_ph;
-        out += 0.045f * on * (0.4f + 0.6f * (1.0f - v->gas)) * sinf(2.0f * (float)M_PI * e->whine_ph);
-        out += 0.025f * on * sinf(2.0f * (float)M_PI * e->diff_ph);
+        out += vc->dogbox * 0.045f * on * (0.4f + 0.6f * (1.0f - v->gas)) * sinf(2.0f * (float)M_PI * e->whine_ph);
+        out += vc->dogbox * 0.025f * on * sinf(2.0f * (float)M_PI * e->diff_ph);
+    }
+    if (vc->gravel <= 0) {
+        return out;
     }
     // Gravel: a low rumble and stones flicking off the tyres.
     e->rumble += (noise() - e->rumble) * 0.05f;
-    out += 0.35f * speed * e->rumble;
+    out += vc->gravel * 0.35f * speed * e->rumble;
     float x_stone = 0;
     if (speed > 0.02f && noise() * 0.5f + 0.5f < 45.0f * speed / SR) {
-        x_stone = (0.5f + 0.5f * noise()) * 3.0f;
+        x_stone = (0.5f + 0.5f * noise()) * 3.0f * vc->gravel;
     }
     out += 0.4f * reso_run(&e->stone, x_stone);
     return out;
@@ -227,15 +254,17 @@ static void engine_block(engine_t *e, const voice_t *vc, const control_view_t *v
     float want_rpm, want_load;
     target(vc, v, &want_rpm, &want_load);
 
-    // Rally: gear changes, the turbo, lifting off.
+    // Gear changes, the turbo, lifting off.
     if (v->gear != e->last_gear) {
-        if (vc->rally && v->engine) {
+        if (v->engine) {
             if (v->gear > e->last_gear && e->last_gear >= GEAR_1) {
-                e->cut_left = 0.07f; // flat shift: cut, then bang
-            } else if (v->gear < e->last_gear && v->gear >= GEAR_1) {
+                e->cut_left = vc->cut_s; // fast shift: cut, then bang
+            } else if (vc->blip && v->gear < e->last_gear && v->gear >= GEAR_1) {
                 e->blip_left = 0.12f;
             }
-            e->crack_left = 0.004f; // the dog box clunk
+            if (vc->dogbox > 0) {
+                e->crack_left = 0.004f; // the dog box clunk
+            }
         }
         e->last_gear = v->gear;
     }
@@ -244,11 +273,11 @@ static void engine_block(engine_t *e, const voice_t *vc, const control_view_t *v
         want_rpm += 1500.0f;
         want_load = 0.6f;
     }
-    if (vc->rally) {
+    if (vc->turbo > 0) {
         float spool = e->rpm > 2200.0f ? fminf((e->rpm - 2200.0f) / 3000.0f, 1.0f) : 0.0f;
         float want_boost = v->gas * spool;
         e->boost += (want_boost - e->boost) * (want_boost > e->boost ? 0.035f : 0.12f);
-        if (e->prev_gas - v->gas > 0.3f && e->boost > 0.3f) {
+        if (vc->bov > 0 && e->prev_gas - v->gas > 0.3f && e->boost > 0.3f) {
             e->bov_left = 0.45f;
             e->bov_amp = e->boost;
             e->bov_t = 0;
@@ -283,7 +312,7 @@ static void engine_block(engine_t *e, const voice_t *vc, const control_view_t *v
     if (e->flare_left > 0) {
         e->flare_left -= BLOCK_S;
         float f = e->flare_left / FLARE_S;
-        float flare = vc->idle + FLARE_RPM * f * f;
+        float flare = vc->idle + vc->flare * f * f;
         want_rpm = want_rpm > flare ? want_rpm : flare;
         want_load = want_load > 0.4f * f ? want_load : 0.4f * f;
     }
@@ -308,14 +337,14 @@ static void engine_block(engine_t *e, const voice_t *vc, const control_view_t *v
 
     float rpm = e->rpm;
     bool running = rpm > STOP_RPM;
-    bool overrun = v->engine && !cranking && v->gas < 0.05f && rpm > (vc->rally ? 2200.0f : 2600.0f);
+    bool overrun = v->engine && !cranking && v->gas < 0.05f && rpm > vc->overrun_rpm;
     // The exhaust note rises a little with the revs.
     reso_tune(&e->body, vc->body_hz + rpm * vc->body_k, vc->body_decay);
     reso_tune(&e->mid, vc->mid_hz + rpm * vc->mid_k, vc->mid_decay);
     reso_tune(&e->high, vc->high_hz, 0.004f);
     reso_tune(&e->bov, 2800.0f, 0.002f);
     reso_tune(&e->stone, 3600.0f, 0.0012f);
-    float fire_hz = rpm / 30.0f;
+    float fire_hz = rpm * vc->cyl / 120.0f;
     float rough = vc->rough + (rpm < vc->idle * 1.3f ? vc->lump : 0.0f);
     float speed = fabsf(v->speed);
     bool cut_now = e->cut_left > 0;
@@ -343,7 +372,7 @@ static void engine_block(engine_t *e, const voice_t *vc, const control_view_t *v
             e->phase += fire_hz / SR;
             if (e->phase >= 1.0f) {
                 e->phase -= 1.0f;
-                e->cyl = (e->cyl + 1) & 3;
+                e->cyl = (e->cyl + 1) % vc->cyl;
                 float a = (level0 + dlevel * i) * CYL_GAIN[e->cyl] * (1.0f + rough * noise());
                 x_body = a * 6.0f;
                 x_mid = a * 2.5f;
@@ -376,9 +405,7 @@ static void engine_block(engine_t *e, const voice_t *vc, const control_view_t *v
         // Intake hiss with load and revs.
         e->hiss += (noise() - e->hiss) * 0.2f;
         s += e->hiss * 0.05f * e->load * (rpm / vc->red);
-        if (vc->rally) {
-            s += rally_sample(e, v, rpm, speed);
-        }
+        s += extras_sample(e, vc, v, rpm, speed);
         // DC block, soft clip.
         float y = s - e->dc_x + 0.995f * e->dc_y;
         e->dc_x = s;

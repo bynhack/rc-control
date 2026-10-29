@@ -3,10 +3,10 @@
 // ignition, idle, revs that follow speed within the gear (so an upshift
 // drops them), a free rev in neutral, and pops on the overrun. The rally
 // voice adds a turbo, blow-off, anti-lag bangs, flat-shift cuts, dog-box
-// whine and gravel.
+// whine and gravel; the M4 voice is a twin-turbo straight six.
 #pragma once
 
 // Which car it sounds like (saved: ui_sound_get() in radio.h).
-enum { SOUND_ROAD, SOUND_RALLY, SOUND_VOICES };
+enum { SOUND_ROAD, SOUND_RALLY, SOUND_M4, SOUND_VOICES };
 
 void sound_start(void);

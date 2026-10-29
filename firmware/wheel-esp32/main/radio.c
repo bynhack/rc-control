@@ -18,7 +18,7 @@ static const char *TAG = "radio";
 #define NVS_KEY_DUPLEX "elrs2"
 #define NVS_KEY_VOL "vol"
 #define NVS_KEY_SOUND "snd"
-#define SOUND_COUNT 2 // sound.h SOUND_VOICES
+#define SOUND_COUNT 3 // sound.h SOUND_VOICES
 #define DEFAULT_VOL 80
 #define DEFAULT_FFB 40
 // Bump when radio_config_t changes, so an old blob is ignored.
