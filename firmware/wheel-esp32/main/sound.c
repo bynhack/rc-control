@@ -97,7 +97,9 @@ static void target(const control_view_t *v, float *rpm, float *load) {
     *rpm = r > slip ? r : slip;
 }
 
-static void engine_block(engine_t *e, const control_view_t *v, int16_t *out, float gain) {
+// drive: how hard the sound hits the soft clip (more = louder and grittier);
+// master: the volume, applied after it.
+static void engine_block(engine_t *e, const control_view_t *v, int16_t *out, float drive, float master) {
     float want_rpm, want_load;
     target(v, &want_rpm, &want_load);
 
@@ -185,9 +187,9 @@ static void engine_block(engine_t *e, const control_view_t *v, int16_t *out, flo
         float y = s - e->dc_x + 0.995f * e->dc_y;
         e->dc_x = s;
         e->dc_y = y;
-        y *= gain;
+        y *= drive;
         y = y / (1.0f + fabsf(y));
-        out[i] = (int16_t)(y * 30000.0f);
+        out[i] = (int16_t)(y * master * 32000.0f);
     }
 }
 
@@ -195,15 +197,11 @@ static void sound_task(void *arg) {
     esp_codec_dev_handle_t spk = arg;
     static engine_t e;
     static int16_t buf[BLOCK];
-    int vol = -1;
     for (;;) {
-        int want = ui_vol_get();
-        if (want != vol) {
-            vol = want;
-            esp_codec_dev_set_out_vol(spk, vol);
-        }
+        // Squared, so the steps sound even.
+        float m = ui_vol_get() / 100.0f;
         control_view_t v = control_view(esp_timer_get_time());
-        engine_block(&e, &v, buf, vol > 0 ? 0.15f : 0.0f);
+        engine_block(&e, &v, buf, 0.35f, m * m);
         // Blocks until the I2S DMA has room: this is the task's clock.
         esp_codec_dev_write(spk, buf, sizeof(buf));
     }
@@ -224,6 +222,9 @@ void sound_start(void) {
         ESP_LOGE(TAG, "speaker open failed");
         return;
     }
+    // The codec's own volume tops out at 0 dB and is far quieter below
+    // that: leave it full and scale the samples instead.
+    esp_codec_dev_set_out_vol(spk, 100);
     xTaskCreatePinnedToCore(sound_task, "sound", 4096, spk, 6, NULL, 0);
     ESP_LOGI(TAG, "engine sound on, %d Hz", SR);
 }

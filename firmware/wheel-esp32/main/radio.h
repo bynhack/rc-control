@@ -57,7 +57,7 @@ void ui_topspeed_set(int kmh);
 int ui_ffb_get(void);
 void ui_ffb_set(int pct);
 
-// Engine sound volume on the speaker, 0..100 % (sound.c). Default 60.
+// Engine sound volume on the speaker, 0..100 % (sound.c). Default 80.
 int ui_vol_get(void);
 void ui_vol_set(int pct);
 
