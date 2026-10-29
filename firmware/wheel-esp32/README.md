@@ -60,6 +60,12 @@ idf.py -p /dev/cu.usbserial-XXXX flash monitor
 
 Nano 要刷 ELRS 3.5 以上的接收機韌體，刷的時候選「RX as TX」= **internal（全雙工）**。ESP8285 只支援 internal。
 
+已驗證（2026-10-29）：CYCLONE Nano RX2400 出廠是 ELRS 3.6.2，網頁顯示型號「BETAFPV 2.4GHz Nano RX」。刷法：
+1. 只接 5V 和 GND，等 60 秒燈快閃，連「ExpressLRS RX」WiFi（密碼 `expresslrs`），打開 http://10.0.0.1。
+2. 用韌體包裡的 flasher 產生發射機韌體（韌體包從 `https://artifactory.expresslrs.org/ExpressLRS/<版本的 commit>/firmware.zip` 下載，commit 查 `index.json`）：
+   `python3 flasher.pyz --dir firmware --target betafpv.rx_2400.nano --rx-as-tx internal --phrase <綁定短語>`
+3. 在網頁的 UPDATE 上傳 `firmware.bin.gz`，型號不符的警告選強制刷入。
+
 ## 四合一高頻頭（MULTI）
 
 iRangeX IRX4+ 的 JR 母座從上到下：1 PPM → P4 的 GPIO30，2 空，3 VIN → 5V（CAN／RS485 端子第 1 腳），4 GND，5 S.Port（沒接）。
