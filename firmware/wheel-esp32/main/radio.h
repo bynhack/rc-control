@@ -32,12 +32,35 @@ typedef struct {
     bool rev_thr[RADIO_KINDS];
 } radio_config_t;
 
-// Loads the saved choice (or the defaults). Call before the radios start.
+// Loads the saved cars (or the defaults). Call before the radios start.
 void radio_init(void);
+// The active car's radio.
 radio_config_t radio_config(void);
-// Applies and saves.
+// Applies to the active car and saves.
 void radio_set(const radio_config_t *c);
 const char *radio_kind_name(radio_kind_t k);
+
+// ---- cars --------------------------------------------------------------------
+//
+// Each car keeps its own radio, top speed and engine sound; one is active,
+// and radio_config()/radio_set(), ui_topspeed_*() and ui_sound_*() work on
+// that one. Everything else (language, volume, force feedback, screen,
+// ELRS wiring) belongs to the controller, not the car.
+
+#define CAR_COUNT 6
+#define CAR_NAME_LEN 16
+
+typedef struct {
+    char name[CAR_NAME_LEN]; // "" = the default "Car N"
+    radio_config_t radio;
+    uint8_t top_kmh;
+    uint8_t sound;
+} car_t;
+
+int car_active(void);
+void car_select(int i);
+car_t car_get(int i);
+void car_rename(int i, const char *name);
 
 // Screen language, saved next to the radio choice: 0 = Simplified Chinese
 // (the default), 1 = Traditional.
@@ -48,7 +71,7 @@ void ui_lang_set(int lang);
 int ui_dash_get(void);
 void ui_dash_set(int dash);
 
-// The car's top speed in km/h, for turning the modelled speed into km/h on
+// The active car's top speed in km/h, for turning the modelled speed into km/h on
 // the dashboard (there is no speed sensor). Default 30.
 int ui_topspeed_get(void);
 void ui_topspeed_set(int kmh);
@@ -61,7 +84,7 @@ void ui_ffb_set(int pct);
 int ui_vol_get(void);
 void ui_vol_set(int pct);
 
-// Which engine sound (sound.h: SOUND_ROAD, SOUND_RALLY, SOUND_M4). Read every audio
+// The active car's engine sound (sound.h: SOUND_ROAD, SOUND_RALLY, SOUND_M4). Read every audio
 // block, so cached.
 int ui_sound_get(void);
 void ui_sound_set(int voice);

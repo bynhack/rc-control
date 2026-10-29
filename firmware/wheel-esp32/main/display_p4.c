@@ -137,6 +137,12 @@ static const char *const TEXT[T_COUNT][2] = {
     [T_SOUND_ROAD] = {"普通轿车", "普通轎車"},
     [T_SOUND_RALLY] = {"拉力赛车", "拉力賽車"},
     [T_SOUND_M4] = {"宝马 M4", "寶馬 M4"},
+    [T_TAB_CAR] = {"车辆", "車輛"},
+    [T_CAR_PICK] = {"选择车辆", "選擇車輛"},
+    [T_CAR_FMT] = {"车 %d", "車 %d"},
+    [T_RENAME] = {"改名", "改名"},
+    [T_CAR_HINT] = {"点一下就换成这台车。“发射设置”和“驾驶设置”里改的（发射方式、协议、对频编号、反转、最高车速、声浪）都只存进选中的这台车。",
+                    "點一下就換成這台車。「發射設定」和「駕駛設定」裡改的（發射方式、協議、對頻編號、反轉、最高車速、聲浪）都只存進選中的這台車。"},
     [T_FLIP_HINT] = {"板子倒着装时用。点一下会重启屏幕，再点一下翻回来。", "板子倒著裝時用。點一下會重啟螢幕，再點一下翻回來。"},
     [T_FFB_HINT] = {"车速越快，方向盘回正越有力；停车时很轻。第一次试的时候手轻扶方向盘，从小往大调。0% 关闭。",
                     "車速越快，方向盤回正越有力；停車時很輕。第一次試的時候手輕扶方向盤，從小往大調。0% 關閉。"},
@@ -305,7 +311,7 @@ static void on_lang(lv_event_t *e) {
     }
 }
 
-#define TABS 3
+enum { TAB_CAR, TAB_RADIO, TAB_DRIVE, TAB_STATUS, TABS };
 static lv_obj_t *s_tab_page[TABS], *s_tab_btn[TABS];
 static lv_obj_t *s_kmh_val;
 static int s_kmh;
@@ -351,11 +357,17 @@ static lv_obj_t *button(lv_obj_t *parent, int x, int y, int w, int h, uint32_t c
     return b;
 }
 
+static lv_obj_t *s_car_top; // the active car's name on the dashboard
+
 static void build_top(lv_obj_t *scr) {
     lv_obj_t *setup = button(scr, 1024 - M - 64, 10, 64, 48, C_DIM, &lv_font_montserrat_24, LV_SYMBOL_SETTINGS);
     lv_obj_set_style_border_color(setup, hex(C_EDGE), 0);
     lv_obj_set_style_bg_opa(setup, LV_OPA_10, 0);
     lv_obj_add_event_cb(setup, on_setup_open, LV_EVENT_CLICKED, NULL);
+    s_car_top = label(scr, &cjk_16, C_DIM, "");
+    lv_obj_set_width(s_car_top, 200);
+    lv_obj_set_style_text_align(s_car_top, LV_TEXT_ALIGN_RIGHT, 0);
+    lv_obj_set_pos(s_car_top, 1024 - M - 64 - 12 - 200, 24);
 }
 
 // Status tab: the wheel, pedals and the radio link, for checking things.
@@ -518,6 +530,108 @@ static void build_drive_tab(lv_obj_t *t) {
     lv_obj_set_pos(flh, M + 8 + 280, 482);
 }
 
+// ---- cars --------------------------------------------------------------------
+
+static lv_obj_t *s_car_btn[CAR_COUNT], *s_car_name[CAR_COUNT], *s_car_info[CAR_COUNT];
+static lv_obj_t *s_kbd_box, *s_kbd_ta;
+
+static void highlight(lv_obj_t *b, bool on, uint32_t color);
+
+static void car_name(int i, char *buf, size_t n) {
+    car_t c = car_get(i);
+    if (c.name[0]) {
+        snprintf(buf, n, "%s", c.name);
+    } else {
+        snprintf(buf, n, tr(T_CAR_FMT), i + 1);
+    }
+}
+
+static void on_car(lv_event_t *e) {
+    car_select((int)(intptr_t)lv_event_get_user_data(e));
+    s_kmh = ui_topspeed_get();
+}
+
+static void on_rename_done(lv_event_t *e) {
+    if (lv_event_get_code(e) == LV_EVENT_READY) {
+        car_rename(car_active(), lv_textarea_get_text(s_kbd_ta));
+    }
+    lv_obj_add_flag(s_kbd_box, LV_OBJ_FLAG_HIDDEN);
+}
+
+static void on_rename(lv_event_t *e) {
+    car_t c = car_get(car_active());
+    lv_textarea_set_text(s_kbd_ta, c.name);
+    lv_obj_remove_flag(s_kbd_box, LV_OBJ_FLAG_HIDDEN);
+}
+
+// Cars tab: pick the car you are driving; the radio and driving tabs then
+// edit that car.
+static void build_car_tab(lv_obj_t *t) {
+    setup_label(t, M + 8, 78, T_CAR_PICK);
+    const int cols = 3, cw = (1024 - 2 * M - 16 - (cols - 1) * 12) / cols, ch = 150;
+    for (int i = 0; i < CAR_COUNT; i++) {
+        int x = M + 8 + (i % cols) * (cw + 12), y = 100 + (i / cols) * (ch + 12);
+        lv_obj_t *b = button(t, x, y, cw, ch, C_CYAN, &cjk_24, "");
+        lv_obj_add_event_cb(b, on_car, LV_EVENT_CLICKED, (void *)(intptr_t)i);
+        s_car_btn[i] = b;
+        s_car_name[i] = lv_obj_get_child(b, 0);
+        lv_obj_align(s_car_name[i], LV_ALIGN_TOP_LEFT, 8, 10);
+        s_car_info[i] = label(b, &cjk_16, C_DIM, "");
+        lv_obj_set_width(s_car_info[i], cw - 32);
+        lv_label_set_long_mode(s_car_info[i], LV_LABEL_LONG_WRAP);
+        lv_obj_set_style_text_line_space(s_car_info[i], 6, 0);
+        lv_obj_align(s_car_info[i], LV_ALIGN_TOP_LEFT, 8, 56);
+    }
+    lv_obj_t *rn = button(t, M + 8, 440, 220, 60, C_CYAN, &cjk_20, "");
+    track(lv_obj_get_child(rn, 0), T_RENAME);
+    lv_obj_add_event_cb(rn, on_rename, LV_EVENT_CLICKED, NULL);
+    lv_obj_t *hint = track(label(t, &cjk_16, C_DIM, ""), T_CAR_HINT);
+    lv_obj_set_width(hint, 1024 - 2 * M - 260);
+    lv_label_set_long_mode(hint, LV_LABEL_LONG_WRAP);
+    lv_obj_set_pos(hint, M + 8 + 240, 446);
+
+    // Rename: Latin letters and digits (the fonts carry no other input).
+    s_kbd_box = lv_obj_create(t);
+    lv_obj_remove_style_all(s_kbd_box);
+    lv_obj_set_size(s_kbd_box, 1024, 600 - 70);
+    lv_obj_set_pos(s_kbd_box, 0, 70);
+    lv_obj_set_style_bg_color(s_kbd_box, hex(C_BG), 0);
+    lv_obj_set_style_bg_opa(s_kbd_box, LV_OPA_COVER, 0);
+    lv_obj_add_flag(s_kbd_box, LV_OBJ_FLAG_HIDDEN);
+    s_kbd_ta = lv_textarea_create(s_kbd_box);
+    lv_textarea_set_one_line(s_kbd_ta, true);
+    lv_textarea_set_max_length(s_kbd_ta, CAR_NAME_LEN - 1);
+    lv_obj_set_style_text_font(s_kbd_ta, &lv_font_montserrat_28, 0);
+    lv_obj_set_size(s_kbd_ta, 600, 64);
+    lv_obj_set_pos(s_kbd_ta, (1024 - 600) / 2, 16);
+    lv_obj_t *kb = lv_keyboard_create(s_kbd_box);
+    lv_obj_set_size(kb, 1024, 420);
+    lv_obj_align(kb, LV_ALIGN_BOTTOM_MID, 0, 0);
+    lv_obj_set_style_text_font(kb, &lv_font_montserrat_24, 0);
+    lv_keyboard_set_textarea(kb, s_kbd_ta);
+    lv_obj_add_event_cb(kb, on_rename_done, LV_EVENT_READY, NULL);
+    lv_obj_add_event_cb(kb, on_rename_done, LV_EVENT_CANCEL, NULL);
+}
+
+static void show_cars(void) {
+    char buf[96], name[48];
+    static const int sounds[SOUND_VOICES] = {T_SOUND_ROAD, T_SOUND_RALLY, T_SOUND_M4};
+    for (int i = 0; i < CAR_COUNT; i++) {
+        car_t c = car_get(i);
+        highlight(s_car_btn[i], car_active() == i, C_CYAN);
+        car_name(i, name, sizeof(name));
+        set_text(s_car_name[i], name);
+        const char *radio = c.radio.kind == RADIO_ELRS          ? "ELRS"
+                            : c.radio.kind == RADIO_MULTI_PPM ? tr(T_KIND_PPM)
+                                                              : MULTI_PROTOS[c.radio.proto].name;
+        snprintf(buf, sizeof(buf), "%s\n%d km/h  ·  %s", radio, c.top_kmh,
+                 tr(sounds[c.sound < SOUND_VOICES ? c.sound : 0]));
+        set_text(s_car_info[i], buf);
+    }
+    car_name(car_active(), name, sizeof(name));
+    set_text(s_car_top, name);
+}
+
 // Full-screen page over the dashboard, hidden until RADIO is tapped.
 static void build_setup(void) {
     lv_obj_t *p = lv_obj_create(lv_layer_top());
@@ -529,7 +643,7 @@ static void build_setup(void) {
     lv_obj_add_flag(p, LV_OBJ_FLAG_HIDDEN);
     s_setup = p;
 
-    // Two tabs: radio settings and status. Pages first, so the header
+    // Tabs: car, radio, driving, status. Pages first, so the header
     // buttons sit on top of them.
     for (int i = 0; i < TABS; i++) {
         lv_obj_t *t = lv_obj_create(p);
@@ -539,16 +653,18 @@ static void build_setup(void) {
         lv_obj_remove_flag(t, LV_OBJ_FLAG_CLICKABLE);
         s_tab_page[i] = t;
     }
-    lv_obj_add_flag(s_tab_page[1], LV_OBJ_FLAG_HIDDEN);
-    lv_obj_add_flag(s_tab_page[2], LV_OBJ_FLAG_HIDDEN);
-    static const int tabs[TABS] = {T_SETUP_TITLE, T_TAB_DRIVE, T_STATUS};
+    for (int i = 1; i < TABS; i++) {
+        lv_obj_add_flag(s_tab_page[i], LV_OBJ_FLAG_HIDDEN);
+    }
+    static const int tabs[TABS] = {T_TAB_CAR, T_SETUP_TITLE, T_TAB_DRIVE, T_STATUS};
     for (int i = 0; i < TABS; i++) {
-        s_tab_btn[i] = button(p, M + 8 + i * 156, 12, 146, 48, C_CYAN, &cjk_20, "");
+        s_tab_btn[i] = button(p, M + 8 + i * 136, 12, 128, 48, C_CYAN, &cjk_20, "");
         track(lv_obj_get_child(s_tab_btn[i], 0), tabs[i]);
         lv_obj_add_event_cb(s_tab_btn[i], on_tab, LV_EVENT_CLICKED, (void *)(intptr_t)i);
     }
-    build_drive_tab(s_tab_page[1]);
-    build_status(s_tab_page[2]);
+    build_car_tab(s_tab_page[TAB_CAR]);
+    build_drive_tab(s_tab_page[TAB_DRIVE]);
+    build_status(s_tab_page[TAB_STATUS]);
     lv_obj_t *done = button(p, 1024 - M - 160, 12, 160, 48, C_GREEN, &cjk_20, "");
     track(lv_obj_get_child(done, 0), T_DONE);
     lv_obj_add_event_cb(done, on_setup_close, LV_EVENT_CLICKED, NULL);
@@ -558,7 +674,7 @@ static void build_setup(void) {
         lv_obj_add_event_cb(s_lang_btn[i], on_lang, LV_EVENT_CLICKED, (void *)(intptr_t)i);
     }
 
-    lv_obj_t *r = s_tab_page[0];
+    lv_obj_t *r = s_tab_page[TAB_RADIO];
     // Which radio transmits.
     setup_label(r, M + 8, 78, T_OUTPUT);
     static const int kinds[RADIO_KINDS] = {-1, T_KIND_SERIAL, T_KIND_PPM};
@@ -870,13 +986,14 @@ static void show_setup(const display_state_t *s) {
 }
 
 void display_show(const display_state_t *s) {
-    if (s_tab_page[0] == NULL || !bsp_display_lock(20)) {
+    if (s_tab_page[TAB_CAR] == NULL || !bsp_display_lock(20)) {
         return;
     }
     show_drive(s);
     show_status(s);
     show_link(s);
     show_setup(s);
+    show_cars();
     bsp_display_unlock();
 }
 

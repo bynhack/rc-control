@@ -1,5 +1,7 @@
 #include "radio.h"
 
+#include <string.h>
+
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "nvs.h"
@@ -8,7 +10,8 @@
 static const char *TAG = "radio";
 
 #define NVS_NS "radio"
-#define NVS_KEY "cfg"
+#define NVS_KEY "cfg" // before cars: the one radio_config_t
+#define NVS_KEY_CARS "cars"
 #define NVS_KEY_LANG "lang"
 #define NVS_KEY_DASH "dash"
 #define NVS_KEY_KMH "kmh"
@@ -21,8 +24,9 @@ static const char *TAG = "radio";
 #define SOUND_COUNT 3 // sound.h SOUND_VOICES
 #define DEFAULT_VOL 80
 #define DEFAULT_FFB 40
-// Bump when radio_config_t changes, so an old blob is ignored.
+// Bump when radio_config_t or car_t change, so an old blob is ignored.
 #define CFG_VERSION 1
+#define GARAGE_VERSION 1
 
 // Surface protocols first; names are shown on the screen (display_p4.c
 // fonts must cover them). Option: CC2500 fine tune (S-FHSS -50 is the
@@ -40,14 +44,75 @@ typedef struct {
     radio_config_t cfg;
 } stored_t;
 
+typedef struct {
+    uint8_t version;
+    uint8_t active;
+    car_t cars[CAR_COUNT];
+} garage_t;
+
 static portMUX_TYPE s_lock = portMUX_INITIALIZER_UNLOCKED;
-// The MXO car (FlySky) is bound through the module's dial, so PPM; the
-// ELRS car wants steering reversed.
-static radio_config_t s_cfg = {
-    .kind = RADIO_MULTI_PPM,
-    .proto = 0,
-    .rev_steer = {true, true, true},
+static garage_t s_garage;
+
+static const car_t DEFAULT_CAR = {
+    .radio = {.kind = RADIO_ELRS, .rev_steer = {true, true, true}},
+    .top_kmh = DEFAULT_KMH,
 };
+
+static void save_garage(void) {
+    portENTER_CRITICAL(&s_lock);
+    garage_t g = s_garage;
+    portEXIT_CRITICAL(&s_lock);
+    nvs_handle_t h;
+    if (nvs_open(NVS_NS, NVS_READWRITE, &h) == ESP_OK) {
+        nvs_set_blob(h, NVS_KEY_CARS, &g, sizeof(g));
+        nvs_commit(h);
+        nvs_close(h);
+    }
+}
+
+static bool car_ok(const car_t *c) {
+    return c->radio.kind < RADIO_KINDS && c->radio.proto < MULTI_PROTO_COUNT && c->sound < SOUND_COUNT &&
+           c->top_kmh >= 5 && c->name[CAR_NAME_LEN - 1] == 0;
+}
+
+static bool load_garage(nvs_handle_t h) {
+    garage_t g;
+    size_t len = sizeof(g);
+    if (nvs_get_blob(h, NVS_KEY_CARS, &g, &len) != ESP_OK || len != sizeof(g) || g.version != GARAGE_VERSION ||
+        g.active >= CAR_COUNT) {
+        return false;
+    }
+    for (int i = 0; i < CAR_COUNT; i++) {
+        if (!car_ok(&g.cars[i])) {
+            g.cars[i] = DEFAULT_CAR;
+        }
+    }
+    s_garage = g;
+    return true;
+}
+
+// Before cars there was one radio setting, top speed and sound: they
+// become car 1.
+static void migrate(nvs_handle_t h) {
+    s_garage.version = GARAGE_VERSION;
+    for (int i = 0; i < CAR_COUNT; i++) {
+        s_garage.cars[i] = DEFAULT_CAR;
+    }
+    car_t *c = &s_garage.cars[0];
+    stored_t st;
+    size_t len = sizeof(st);
+    if (nvs_get_blob(h, NVS_KEY, &st, &len) == ESP_OK && len == sizeof(st) && st.version == CFG_VERSION &&
+        st.cfg.kind < RADIO_KINDS && st.cfg.proto < MULTI_PROTO_COUNT) {
+        c->radio = st.cfg;
+    }
+    uint8_t v;
+    if (nvs_get_u8(h, NVS_KEY_KMH, &v) == ESP_OK && v >= 5) {
+        c->top_kmh = v;
+    }
+    if (nvs_get_u8(h, NVS_KEY_SOUND, &v) == ESP_OK && v < SOUND_COUNT) {
+        c->sound = v;
+    }
+}
 
 void radio_init(void) {
     esp_err_t err = nvs_flash_init();
@@ -56,40 +121,71 @@ void radio_init(void) {
         err = nvs_flash_init();
     }
     ESP_ERROR_CHECK(err);
+    bool loaded = false;
     nvs_handle_t h;
     if (nvs_open(NVS_NS, NVS_READONLY, &h) == ESP_OK) {
-        stored_t st;
-        size_t len = sizeof(st);
-        if (nvs_get_blob(h, NVS_KEY, &st, &len) == ESP_OK && len == sizeof(st) && st.version == CFG_VERSION &&
-            st.cfg.kind < RADIO_KINDS && st.cfg.proto < MULTI_PROTO_COUNT) {
-            s_cfg = st.cfg;
+        loaded = load_garage(h);
+        if (!loaded) {
+            migrate(h);
         }
         nvs_close(h);
+    } else {
+        migrate(0);
     }
-    ESP_LOGI(TAG, "%s, %s rx %d option %d", radio_kind_name(s_cfg.kind), MULTI_PROTOS[s_cfg.proto].name,
-             s_cfg.rx_num, s_cfg.option);
+    if (!loaded) {
+        save_garage();
+    }
+    radio_config_t c = radio_config();
+    ESP_LOGI(TAG, "car %d: %s, %s rx %d option %d", s_garage.active + 1, radio_kind_name(c.kind),
+             MULTI_PROTOS[c.proto].name, c.rx_num, c.option);
 }
 
 radio_config_t radio_config(void) {
     portENTER_CRITICAL(&s_lock);
-    radio_config_t c = s_cfg;
+    radio_config_t c = s_garage.cars[s_garage.active].radio;
     portEXIT_CRITICAL(&s_lock);
     return c;
 }
 
 void radio_set(const radio_config_t *c) {
     portENTER_CRITICAL(&s_lock);
-    s_cfg = *c;
+    s_garage.cars[s_garage.active].radio = *c;
     portEXIT_CRITICAL(&s_lock);
-    stored_t st = {.version = CFG_VERSION, .cfg = *c};
-    nvs_handle_t h;
-    if (nvs_open(NVS_NS, NVS_READWRITE, &h) == ESP_OK) {
-        nvs_set_blob(h, NVS_KEY, &st, sizeof(st));
-        nvs_commit(h);
-        nvs_close(h);
-    }
+    save_garage();
     ESP_LOGI(TAG, "set %s, %s rx %d option %d", radio_kind_name(c->kind), MULTI_PROTOS[c->proto].name, c->rx_num,
              c->option);
+}
+
+int car_active(void) {
+    return s_garage.active;
+}
+
+void car_select(int i) {
+    if (i < 0 || i >= CAR_COUNT) {
+        return;
+    }
+    portENTER_CRITICAL(&s_lock);
+    s_garage.active = (uint8_t)i;
+    portEXIT_CRITICAL(&s_lock);
+    save_garage();
+    ESP_LOGI(TAG, "car %d", i + 1);
+}
+
+car_t car_get(int i) {
+    portENTER_CRITICAL(&s_lock);
+    car_t c = s_garage.cars[i < 0 || i >= CAR_COUNT ? 0 : i];
+    portEXIT_CRITICAL(&s_lock);
+    return c;
+}
+
+void car_rename(int i, const char *name) {
+    if (i < 0 || i >= CAR_COUNT) {
+        return;
+    }
+    portENTER_CRITICAL(&s_lock);
+    strlcpy(s_garage.cars[i].name, name, CAR_NAME_LEN);
+    portEXIT_CRITICAL(&s_lock);
+    save_garage();
 }
 
 const char *radio_kind_name(radio_kind_t k) {
@@ -144,22 +240,12 @@ void ui_dash_set(int dash) {
 }
 
 int ui_topspeed_get(void) {
-    uint8_t v = DEFAULT_KMH;
-    nvs_handle_t h;
-    if (nvs_open(NVS_NS, NVS_READONLY, &h) == ESP_OK) {
-        nvs_get_u8(h, NVS_KEY_KMH, &v);
-        nvs_close(h);
-    }
-    return v < 5 ? DEFAULT_KMH : v;
+    return s_garage.cars[s_garage.active].top_kmh;
 }
 
 void ui_topspeed_set(int kmh) {
-    nvs_handle_t h;
-    if (nvs_open(NVS_NS, NVS_READWRITE, &h) == ESP_OK) {
-        nvs_set_u8(h, NVS_KEY_KMH, (uint8_t)kmh);
-        nvs_commit(h);
-        nvs_close(h);
-    }
+    s_garage.cars[s_garage.active].top_kmh = (uint8_t)kmh;
+    save_garage();
 }
 
 // Read often (ffb.c polls it), so cached after the first read.
@@ -257,27 +343,11 @@ void ui_vol_set(int pct) {
     }
 }
 
-static int s_sound = -1;
-
 int ui_sound_get(void) {
-    if (s_sound < 0) {
-        uint8_t v = 0;
-        nvs_handle_t h;
-        if (nvs_open(NVS_NS, NVS_READONLY, &h) == ESP_OK) {
-            nvs_get_u8(h, NVS_KEY_SOUND, &v);
-            nvs_close(h);
-        }
-        s_sound = v < SOUND_COUNT ? v : 0;
-    }
-    return s_sound;
+    return s_garage.cars[s_garage.active].sound;
 }
 
 void ui_sound_set(int voice) {
-    s_sound = voice;
-    nvs_handle_t h;
-    if (nvs_open(NVS_NS, NVS_READWRITE, &h) == ESP_OK) {
-        nvs_set_u8(h, NVS_KEY_SOUND, (uint8_t)voice);
-        nvs_commit(h);
-        nvs_close(h);
-    }
+    s_garage.cars[s_garage.active].sound = (uint8_t)voice;
+    save_garage();
 }
