@@ -66,6 +66,16 @@ Nano 要刷 ELRS 3.5 以上的接收機韌體，刷的時候選「RX as TX」= *
    `python3 flasher.pyz --dir firmware --target betafpv.rx_2400.nano --rx-as-tx internal --phrase <綁定短語>`
 3. 在網頁的 UPDATE 上傳 `firmware.bin.gz`，型號不符的警告選強制刷入。
 
+### 普通 ELRS 接收機當 PWM 接收機用（已驗證 2026-10-29）
+
+CYCLONE 那種只有 GND／VCC／TX／RX 四個焊盤的 ESP8285 接收機（網頁顯示「BETAFPV 2.4GHz Lite RX」，3.6.2），可以把 TX、RX 兩個焊盤改成 PWM，剛好一路舵機一路電調：
+1. 接收機只接 5V 和 GND，60 秒後連「ExpressLRS RX」WiFi。
+2. `http://10.0.0.1/hardware.html` 的 PWM 輸出腳位填 `1,3`（GPIO1 = TX 焊盤，GPIO3 = RX 焊盤），儲存、重啟。也可以直接 POST 整份 `hardware.json` 加上 `"pwm_outputs":[1,3]`。
+3. 預設就是：輸出 1（TX 焊盤）= CH1 轉向，輸出 2（RX 焊盤）= CH2 油門，50Hz，失控保護固定 1500 µs。
+4. 綁定短語在首頁填 `123456789`（或 POST `/config` 的 `uid` = md5(`-DMY_BINDING_PHRASE="123456789"`) 前 6 個位元組）。
+
+油門接 RX 焊盤：TX 焊盤（GPIO1）開機時會吐開機訊息，舵機抖一下沒關係，電調可能誤判。
+
 ## 四合一高頻頭（MULTI）
 
 iRangeX IRX4+ 的 JR 母座從上到下：1 PPM → P4 的 GPIO30，2 空，3 VIN → 5V（CAN／RS485 端子第 1 腳），4 GND，5 S.Port（沒接）。
