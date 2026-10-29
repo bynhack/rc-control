@@ -65,6 +65,7 @@ typedef struct {
     int cyl;
     float crank_left; // seconds of starter left, 0 when not cranking
     bool was_on;
+    float level;      // the last block's firing level
     float pop_left;   // seconds of an overrun pop still sounding
     float rasp_left;  // seconds of the current firing's noise burst
     float rasp_amp;
@@ -124,8 +125,12 @@ static void engine_block(engine_t *e, const control_view_t *v, int16_t *out, flo
         if (!v->engine) {
             k = 0.06f;
         }
-        e->rpm += (want_rpm - e->rpm) * k;
-        e->load += (want_load - e->load) * 0.25f;
+        // ...and no faster than a real engine can spin up or down, or the
+        // jump in pitch and loudness sounds like a bang.
+        float step = (want_rpm - e->rpm) * k;
+        float max_step = (up ? (v->gear == GEAR_N ? 11000.0f : 7000.0f) : 6000.0f) * BLOCK_S;
+        e->rpm += step > max_step ? max_step : (step < -max_step ? -max_step : step);
+        e->load += (want_load - e->load) * 0.10f;
     }
 
     float rpm = e->rpm;
@@ -141,6 +146,9 @@ static void engine_block(engine_t *e, const control_view_t *v, int16_t *out, flo
     level *= 0.6f + 0.4f * (rpm / RED_RPM);
     // Faster firings overlap in the resonators: keep the loudness in check.
     level *= sqrtf(30.0f / fmaxf(fire_hz, 30.0f));
+    // Glide from the last block's level instead of stepping.
+    float level0 = e->level, dlevel = (level - level0) / BLOCK;
+    e->level = level;
 
     for (int i = 0; i < BLOCK; i++) {
         float x_body = 0, x_mid = 0, x_high = 0;
@@ -149,7 +157,7 @@ static void engine_block(engine_t *e, const control_view_t *v, int16_t *out, flo
             if (e->phase >= 1.0f) {
                 e->phase -= 1.0f;
                 e->cyl = (e->cyl + 1) & 3;
-                float a = level * CYL_GAIN[e->cyl] * (1.0f + 0.12f * noise());
+                float a = (level0 + dlevel * i) * CYL_GAIN[e->cyl] * (1.0f + 0.12f * noise());
                 if (e->crank_left > 0) {
                     a = 0.5f * (1.0f + 0.3f * noise()); // compression chugs
                 }
@@ -157,7 +165,7 @@ static void engine_block(engine_t *e, const control_view_t *v, int16_t *out, flo
                 x_mid = a * 2.5f;
                 e->rasp_left = 0.0025f;
                 e->rasp_amp = 0.3f + 0.7f * e->load;
-                if (overrun && noise() > 0.88f) {
+                if (overrun && noise() > 0.94f) {
                     e->pop_left = 0.018f;
                 }
             }
@@ -168,7 +176,7 @@ static void engine_block(engine_t *e, const control_view_t *v, int16_t *out, flo
         }
         if (e->pop_left > 0) {
             e->pop_left -= 1.0f / SR;
-            float n = noise() * 2.2f;
+            float n = noise() * 0.7f;
             x_mid += n;
             x_high += n;
         }
