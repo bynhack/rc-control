@@ -21,8 +21,14 @@ static const char *TAG = "sound";
 // A four-cylinder: one firing every half turn, so firing Hz = rpm / 30.
 #define IDLE_RPM 900.0f
 #define RED_RPM 7000.0f
-#define CRANK_RPM 260.0f
-#define CRANK_S 0.8f
+// Starting: the starter spins the engine at CRANK_RPM, the first cylinders
+// sputter from SPUTTER_S, it catches at CATCH_S, flares and settles.
+#define CRANK_RPM 220.0f
+#define SPUTTER_S 0.55f
+#define CATCH_S 0.9f
+#define FLARE_S 1.2f
+#define FLARE_RPM 1000.0f // above idle
+#define STARTER_HZ 150.0f
 #define STOP_RPM 150.0f
 
 // ---- tiny DSP ----------------------------------------------------------------
@@ -63,7 +69,10 @@ typedef struct {
     float rpm, load;
     float phase; // 0..1 between firings
     int cyl;
-    float crank_left; // seconds of starter left, 0 when not cranking
+    float crank_t;    // seconds since the key turned, < 0 when not cranking
+    float flare_left; // seconds of the flare after catching
+    float starter;    // starter motor loudness 0..1 (fades when it lets go)
+    float st_phase, comp_phase;
     bool was_on;
     float level;      // the last block's firing level
     float pop_left;   // seconds of an overrun pop still sounding
@@ -98,6 +107,41 @@ static void target(const control_view_t *v, float *rpm, float *load) {
     *rpm = r > slip ? r : slip;
 }
 
+// The starter motor: a geared whine that spins up, labours (lower and
+// louder) on every compression stroke, so it goes "rur-rur-rur", with the
+// odd cylinder sputtering towards the end. Fades out once it lets go.
+// Returns the whine; compressions and sputters go into *x_body, the
+// engine's exhaust resonator.
+static float starter_sample(engine_t *e, bool cranking, float *x_body) {
+    float target = cranking ? 1.0f : 0.0f;
+    e->starter += (target - e->starter) * (cranking ? 0.0008f : 0.0004f);
+    if (e->starter < 0.001f) {
+        return 0;
+    }
+    float t = cranking ? e->crank_t : CATCH_S;
+    float spin = t < 0.15f ? t / 0.15f : 1.0f;
+    // Compressions: four per two turns.
+    e->comp_phase += CRANK_RPM * spin / 30.0f / SR;
+    if (e->comp_phase >= 1.0f) {
+        e->comp_phase -= 1.0f;
+        float p = cranking ? (t - SPUTTER_S) / (CATCH_S - SPUTTER_S) : 0;
+        if (p > 0 && noise() * 0.5f + 0.5f < p) {
+            *x_body += 3.0f; // a cylinder fires
+        } else if (cranking) {
+            *x_body += 0.8f; // air through the valves
+        }
+    }
+    float m = 0.5f - 0.5f * cosf(2.0f * (float)M_PI * e->comp_phase);
+    // Let go: no load, it freewheels up in pitch as it fades.
+    float hz = STARTER_HZ * spin * (cranking ? 1.0f - 0.2f * m : 1.3f);
+    e->st_phase += hz / SR;
+    e->st_phase -= (int)e->st_phase;
+    float ph = 2.0f * (float)M_PI * e->st_phase;
+    float whine = sinf(ph) + 0.6f * sinf(2 * ph) + 0.4f * sinf(3 * ph) + 0.3f * sinf(5 * ph) + 0.35f * noise();
+    float amp = 0.45f * e->starter * spin * (cranking ? 0.55f + 0.45f * m : 1.0f);
+    return amp * whine;
+}
+
 // drive: how hard the sound hits the soft clip (more = louder and grittier);
 // master: the volume, applied after it.
 static void engine_block(engine_t *e, const control_view_t *v, int16_t *out, float drive, float master) {
@@ -105,18 +149,36 @@ static void engine_block(engine_t *e, const control_view_t *v, int16_t *out, flo
     target(v, &want_rpm, &want_load);
 
     if (v->engine && !e->was_on) {
-        e->crank_left = CRANK_S;
-        e->rpm = CRANK_RPM;
+        e->crank_t = 0;
+        e->rpm = 0;
+    } else if (!v->engine) {
+        e->crank_t = -1;
+        e->flare_left = 0;
     }
     e->was_on = v->engine;
 
-    if (e->crank_left > 0) {
-        e->crank_left -= BLOCK_S;
-        e->rpm = CRANK_RPM + 40.0f * noise();
-        e->load = 0.15f;
-        if (e->crank_left <= 0) {
-            e->rpm = 1700.0f; // catches, flares, settles to idle
+    bool cranking = e->crank_t >= 0;
+    if (cranking) {
+        e->crank_t += BLOCK_S;
+        if (e->crank_t >= CATCH_S) {
+            // Catches: the starter lets go, the revs flare.
+            e->crank_t = -1;
+            e->flare_left = FLARE_S;
+            e->rpm = 500.0f;
+            e->load = 0.4f;
+            cranking = false;
         }
+    }
+    if (e->flare_left > 0) {
+        e->flare_left -= BLOCK_S;
+        float f = e->flare_left / FLARE_S;
+        float flare = IDLE_RPM + FLARE_RPM * f * f;
+        want_rpm = want_rpm > flare ? want_rpm : flare;
+        want_load = want_load > 0.4f * f ? want_load : 0.4f * f;
+    }
+    if (cranking) {
+        e->rpm = 0; // the starter part below makes the sound
+        e->load = 0;
     } else {
         // Revs climb faster than they fall; free in neutral, held back by
         // the car in gear.
@@ -128,14 +190,14 @@ static void engine_block(engine_t *e, const control_view_t *v, int16_t *out, flo
         // ...and no faster than a real engine can spin up or down, or the
         // jump in pitch and loudness sounds like a bang.
         float step = (want_rpm - e->rpm) * k;
-        float max_step = (up ? (v->gear == GEAR_N ? 11000.0f : 7000.0f) : 6000.0f) * BLOCK_S;
+        float max_step = (up ? (v->gear == GEAR_N || e->flare_left > 0 ? 11000.0f : 7000.0f) : 6000.0f) * BLOCK_S;
         e->rpm += step > max_step ? max_step : (step < -max_step ? -max_step : step);
         e->load += (want_load - e->load) * 0.10f;
     }
 
     float rpm = e->rpm;
     bool running = rpm > STOP_RPM;
-    bool overrun = v->engine && e->crank_left <= 0 && v->gas < 0.05f && rpm > 2600.0f;
+    bool overrun = v->engine && !cranking && v->gas < 0.05f && rpm > 2600.0f;
     // The exhaust note rises a little with the revs.
     reso_tune(&e->body, 85.0f + rpm * 0.018f, 0.030f);
     reso_tune(&e->mid, 380.0f + rpm * 0.03f, 0.009f);
@@ -158,9 +220,6 @@ static void engine_block(engine_t *e, const control_view_t *v, int16_t *out, flo
                 e->phase -= 1.0f;
                 e->cyl = (e->cyl + 1) & 3;
                 float a = (level0 + dlevel * i) * CYL_GAIN[e->cyl] * (1.0f + 0.12f * noise());
-                if (e->crank_left > 0) {
-                    a = 0.5f * (1.0f + 0.3f * noise()); // compression chugs
-                }
                 x_body = a * 6.0f;
                 x_mid = a * 2.5f;
                 e->rasp_left = 0.0025f;
@@ -180,17 +239,11 @@ static void engine_block(engine_t *e, const control_view_t *v, int16_t *out, flo
             x_mid += n;
             x_high += n;
         }
-        float s = reso_run(&e->body, x_body) + 0.6f * reso_run(&e->mid, x_mid) + 0.35f * reso_run(&e->high, x_high);
+        float st = starter_sample(e, cranking, &x_body);
+        float s = st + reso_run(&e->body, x_body) + 0.6f * reso_run(&e->mid, x_mid) + 0.35f * reso_run(&e->high, x_high);
         // Intake hiss with load and revs.
         e->hiss += (noise() - e->hiss) * 0.2f;
         s += e->hiss * 0.05f * e->load * (rpm / RED_RPM);
-        if (e->crank_left > 0) {
-            // Starter motor whine.
-            static float wp;
-            wp += 520.0f / SR;
-            wp -= (int)wp;
-            s += 0.12f * (wp < 0.5f ? 1.0f : -1.0f) * (0.6f + 0.4f * noise());
-        }
         // DC block, soft clip.
         float y = s - e->dc_x + 0.995f * e->dc_y;
         e->dc_x = s;
