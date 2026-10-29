@@ -49,14 +49,16 @@ idf.py -p /dev/cu.usbserial-XXXX flash monitor
 - 微雪 ESP32-S3-Touch-LCD-7C：RGB 屏佔滿了 GPIO，沒有地方接 CRSF；USB 口又要身兼三職。
 - BETAFPV Lite 接收機放車上：只有 CRSF 輸出、沒有 PWM，也沒有 PA/LNA。
 
-新版接法（Nano 走全雙工）：
+新版接法（Nano 走全雙工）。板子上的 UART 端子（H8）跟燒錄口共用 UART0，不能用，所以改接 P3 端子；設定頁「發射設置」選 ELRS 後，把左下按鈕切到「接法：雙線 Nano」：
 
-| P4 板 UART 端子 | Nano RX2400 |
+| P4 板 | Nano RX2400 |
 |---|---|
-| TXD | RX |
-| RXD | TX |
+| P3 端子 GPIO28（我們發） | RX |
+| P3 端子 GPIO29（我們收） | TX |
 | GND | GND |
-| VCC（選 5V） | 5V |
+| CAN／RS485 端子第 1 腳（5V） | 5V |
+
+Nano 要刷 ELRS 3.5 以上的接收機韌體，刷的時候選「RX as TX」= **internal（全雙工）**。ESP8285 只支援 internal。
 
 ## 四合一高頻頭（MULTI）
 

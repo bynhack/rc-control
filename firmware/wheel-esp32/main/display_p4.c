@@ -98,7 +98,10 @@ static const char *const TEXT[T_COUNT][2] = {
     [T_LINKED] = {"已连线", "已連線"},
     [T_CAR_OFF] = {"车未连线", "車未連線"},
     [T_CH_FMT] = {"CH1 转向 %d us     CH2 油门 %d us", "CH1 轉向 %d us     CH2 油門 %d us"},
-    [T_HINT_ELRS] = {"用 ELRS 高频头（GPIO28）发射，四合一不发射。", "用 ELRS 高頻頭（GPIO28）發射，四合一不發射。"},
+    [T_HINT_ELRS] = {"单线接法（BETAFPV 高频头）：信号线接 GPIO28。左边按钮切换接法。",
+                     "單線接法（BETAFPV 高頻頭）：信號線接 GPIO28。左邊按鈕切換接法。"},
+    [T_HINT_ELRS2] = {"双线接法（Nano 刷成发射机）：Nano 的 RX 接 GPIO28，TX 接 GPIO29。左边按钮切换接法。",
+                      "雙線接法（Nano 刷成發射機）：Nano 的 RX 接 GPIO28，TX 接 GPIO29。左邊按鈕切換接法。"},
     [T_HINT_SERIAL] = {"高频头旋钮拨到 0（转旋钮后要断电重开）。按“对频”或方向盘 N 键，再让接收机进入对频。"
                        "S-FHSS 不用按对频，接收机自己配。",
                        "高頻頭旋鈕撥到 0（轉旋鈕後要斷電重開）。按「對頻」或方向盤 N 鍵，再讓接收機進入對頻。"
@@ -126,6 +129,8 @@ static const char *const TEXT[T_COUNT][2] = {
     [T_FFB] = {"方向盘力回馈", "方向盤力回饋"},
     [T_FLIP] = {"屏幕方向", "螢幕方向"},
     [T_FLIP_BTN] = {"翻转 180°", "翻轉 180°"},
+    [T_WIRE_ONE] = {"接法：单线", "接法：單線"},
+    [T_WIRE_TWO] = {"接法：双线 Nano", "接法：雙線 Nano"},
     [T_FLIP_HINT] = {"板子倒着装时用。点一下会重启屏幕，再点一下翻回来。", "板子倒著裝時用。點一下會重啟螢幕，再點一下翻回來。"},
     [T_FFB_HINT] = {"车速越快，方向盘回正越有力；停车时很轻。第一次试的时候手轻扶方向盘，从小往大调。0% 关闭。",
                     "車速越快，方向盤回正越有力；停車時很輕。第一次試的時候手輕扶方向盤，從小往大調。0% 關閉。"},
@@ -274,7 +279,10 @@ static void on_rev_thr(lv_event_t *e) {
 }
 
 static void on_bind(lv_event_t *e) {
-    if (multi_status().binding) {
+    // The same button picks the wiring when ELRS is selected.
+    if (radio_config().kind == RADIO_ELRS) {
+        ui_elrs_duplex_set(!ui_elrs_duplex_get());
+    } else if (multi_status().binding) {
         multi_bind_cancel();
     } else {
         multi_bind();
@@ -788,14 +796,17 @@ static void show_setup(const display_state_t *s) {
     highlight(s_rev_steer, c->rev_steer[c->kind], C_CYAN);
     highlight(s_rev_thr, c->rev_thr[c->kind], C_CYAN);
 
-    bool serial = c->kind == RADIO_MULTI_SERIAL;
-    if (serial) {
+    bool serial = c->kind == RADIO_MULTI_SERIAL, elrs = c->kind == RADIO_ELRS;
+    if (serial || elrs) {
         lv_obj_remove_state(s_bind_btn, LV_STATE_DISABLED);
         lv_obj_remove_flag(s_bind_btn, LV_OBJ_FLAG_HIDDEN);
     } else {
         lv_obj_add_flag(s_bind_btn, LV_OBJ_FLAG_HIDDEN);
     }
-    if (s->multi.binding) {
+    if (elrs) {
+        set_text(s_bind_label, tr(ui_elrs_duplex_get() ? T_WIRE_TWO : T_WIRE_ONE));
+        highlight(s_bind_btn, ui_elrs_duplex_get(), C_CYAN);
+    } else if (s->multi.binding) {
         snprintf(buf, sizeof(buf), tr(T_BINDING_FMT), s->multi.bind_left_s);
         set_text(s_bind_label, buf);
         highlight(s_bind_btn, true, C_AMBER);
@@ -804,8 +815,8 @@ static void show_setup(const display_state_t *s) {
         highlight(s_bind_btn, false, C_AMBER);
     }
     const char *hint;
-    if (c->kind == RADIO_ELRS) {
-        hint = tr(T_HINT_ELRS);
+    if (elrs) {
+        hint = tr(ui_elrs_duplex_get() ? T_HINT_ELRS2 : T_HINT_ELRS);
     } else if (serial) {
         hint = tr(T_HINT_SERIAL);
     } else {

@@ -20,9 +20,14 @@ static const char *TAG = "crsf";
 #if CONFIG_IDF_TARGET_ESP32P4
 // Waveshare P4 7B: P3 expansion terminal. The board's UART terminal (H8) is
 // UART0 on GPIO37/38, shared with the CH343P console, so it can't be used.
+// CRSF_PIN carries both directions in one-wire mode, or only ours (to the
+// module's RX) in two-wire mode, where the module's TX comes in on
+// CRSF_RX_PIN.
 #define CRSF_PIN 28
+#define CRSF_RX_PIN 29
 #else
 #define CRSF_PIN 17
+#define CRSF_RX_PIN 16
 #endif
 #define CRSF_BAUD 400000
 #define FRAME_PERIOD_MS 4
@@ -102,7 +107,8 @@ static int rssi_dbm(uint8_t b) {
 }
 
 // Anything with a good CRC that is not one of our own frame types came from
-// the module (our own bytes are kept off the receiver in line_tx()).
+// the module (in one-wire mode line_tx() keeps our own bytes off the
+// receiver).
 static void parse(const uint8_t *data, size_t n) {
     static uint8_t buf[128];
     static size_t len;
@@ -166,11 +172,25 @@ static void line_rx(void) {
     esp_rom_gpio_connect_in_signal(CRSF_PIN, UART_PERIPH_SIGNAL(CRSF_UART, SOC_UART_RX_PIN_IDX), false);
 }
 
+// Two wires: the UART's own pins, both always connected.
+static void wire_two(void) {
+    gpio_reset_pin(CRSF_PIN);
+    gpio_set_pull_mode(CRSF_RX_PIN, GPIO_PULLUP_ONLY);
+    ESP_ERROR_CHECK(uart_set_pin(CRSF_UART, CRSF_PIN, CRSF_RX_PIN, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE));
+}
+
+static void wire_one(void) {
+    gpio_reset_pin(CRSF_RX_PIN);
+    gpio_reset_pin(CRSF_PIN);
+    line_rx();
+}
+
 static void sender_task(void *arg) {
     uint8_t out[64], in[128];
     uint16_t ch[CHANNELS];
     const uint8_t ping_body[] = {TYPE_DEVICE_PING, ADDR_TX_MODULE, ADDR_HANDSET};
     TickType_t wake = xTaskGetTickCount();
+    bool duplex = false;
     for (uint32_t n = 0;; n++) {
         int64_t now = esp_timer_get_time();
         control_tick(now);
@@ -179,6 +199,16 @@ static void sender_task(void *arg) {
             // Another radio is selected: stay silent, so only one car moves.
             vTaskDelayUntil(&wake, pdMS_TO_TICKS(FRAME_PERIOD_MS));
             continue;
+        }
+        if (ui_elrs_duplex_get() != duplex) {
+            duplex = !duplex;
+            duplex ? wire_two() : wire_one();
+            uart_flush_input(CRSF_UART);
+            if (duplex) {
+                ESP_LOGI(TAG, "two wires: TX GPIO%d, RX GPIO%d", CRSF_PIN, CRSF_RX_PIN);
+            } else {
+                ESP_LOGI(TAG, "one wire on GPIO%d", CRSF_PIN);
+            }
         }
         size_t len;
         if (n % PING_EVERY == 0) {
@@ -193,10 +223,14 @@ static void sender_task(void *arg) {
             len = rc_frame(ch, out);
         }
 
-        line_tx();
-        uart_write_bytes(CRSF_UART, out, len);
-        uart_wait_tx_done(CRSF_UART, pdMS_TO_TICKS(FRAME_PERIOD_MS));
-        line_rx();
+        if (duplex) {
+            uart_write_bytes(CRSF_UART, out, len);
+        } else {
+            line_tx();
+            uart_write_bytes(CRSF_UART, out, len);
+            uart_wait_tx_done(CRSF_UART, pdMS_TO_TICKS(FRAME_PERIOD_MS));
+            line_rx();
+        }
         portENTER_CRITICAL(&s_lock);
         s_frames++;
         portEXIT_CRITICAL(&s_lock);
@@ -220,9 +254,10 @@ void crsf_start(void) {
     };
     ESP_ERROR_CHECK(uart_driver_install(CRSF_UART, 512, 0, 0, NULL, 0));
     ESP_ERROR_CHECK(uart_param_config(CRSF_UART, &cfg));
-    // TX and RX share the pad; line_tx()/line_rx() switch it per frame.
-    gpio_reset_pin(CRSF_PIN);
-    line_rx();
+    // One wire to start with; the task switches to two if that is set. In
+    // one-wire mode TX and RX share the pad and line_tx()/line_rx() switch it
+    // per frame.
+    wire_one();
     xTaskCreatePinnedToCore(sender_task, "crsf", 4096, NULL, 10, NULL, 1);
     ESP_LOGI(TAG, "CRSF on GPIO%d, %d baud, every %d ms", CRSF_PIN, CRSF_BAUD, FRAME_PERIOD_MS);
 }

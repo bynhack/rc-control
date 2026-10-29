@@ -57,6 +57,12 @@ void ui_topspeed_set(int kmh);
 int ui_ffb_get(void);
 void ui_ffb_set(int pct);
 
+// How the ELRS module is wired: false = one wire, half duplex (BETAFPV
+// module, CRSF pin only); true = two wires, full duplex (a Nano receiver
+// flashed as a TX). Read every frame by crsf.c, so cached.
+bool ui_elrs_duplex_get(void);
+void ui_elrs_duplex_set(bool full);
+
 // The screen turned 180 degrees (for mounting the board upside down); takes
 // effect at the next boot.
 bool ui_flip_get(void);

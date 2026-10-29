@@ -15,6 +15,7 @@ static const char *TAG = "radio";
 #define DEFAULT_KMH 30
 #define NVS_KEY_FFB "ffb"
 #define NVS_KEY_FLIP "flip"
+#define NVS_KEY_DUPLEX "elrs2"
 #define DEFAULT_FFB 40
 // Bump when radio_config_t changes, so an old blob is ignored.
 #define CFG_VERSION 1
@@ -197,6 +198,31 @@ void ui_flip_set(bool flip) {
     nvs_handle_t h;
     if (nvs_open(NVS_NS, NVS_READWRITE, &h) == ESP_OK) {
         nvs_set_u8(h, NVS_KEY_FLIP, flip ? 1 : 0);
+        nvs_commit(h);
+        nvs_close(h);
+    }
+}
+
+static int s_duplex = -1;
+
+bool ui_elrs_duplex_get(void) {
+    if (s_duplex < 0) {
+        uint8_t v = 0;
+        nvs_handle_t h;
+        if (nvs_open(NVS_NS, NVS_READONLY, &h) == ESP_OK) {
+            nvs_get_u8(h, NVS_KEY_DUPLEX, &v);
+            nvs_close(h);
+        }
+        s_duplex = v == 1;
+    }
+    return s_duplex == 1;
+}
+
+void ui_elrs_duplex_set(bool full) {
+    s_duplex = full;
+    nvs_handle_t h;
+    if (nvs_open(NVS_NS, NVS_READWRITE, &h) == ESP_OK) {
+        nvs_set_u8(h, NVS_KEY_DUPLEX, full ? 1 : 0);
         nvs_commit(h);
         nvs_close(h);
     }
