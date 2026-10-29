@@ -17,6 +17,8 @@ static const char *TAG = "radio";
 #define NVS_KEY_FLIP "flip"
 #define NVS_KEY_DUPLEX "elrs2"
 #define NVS_KEY_VOL "vol"
+#define NVS_KEY_SOUND "snd"
+#define SOUND_COUNT 2 // sound.h SOUND_VOICES
 #define DEFAULT_VOL 80
 #define DEFAULT_FFB 40
 // Bump when radio_config_t changes, so an old blob is ignored.
@@ -250,6 +252,31 @@ void ui_vol_set(int pct) {
     nvs_handle_t h;
     if (nvs_open(NVS_NS, NVS_READWRITE, &h) == ESP_OK) {
         nvs_set_u8(h, NVS_KEY_VOL, (uint8_t)pct);
+        nvs_commit(h);
+        nvs_close(h);
+    }
+}
+
+static int s_sound = -1;
+
+int ui_sound_get(void) {
+    if (s_sound < 0) {
+        uint8_t v = 0;
+        nvs_handle_t h;
+        if (nvs_open(NVS_NS, NVS_READONLY, &h) == ESP_OK) {
+            nvs_get_u8(h, NVS_KEY_SOUND, &v);
+            nvs_close(h);
+        }
+        s_sound = v < SOUND_COUNT ? v : 0;
+    }
+    return s_sound;
+}
+
+void ui_sound_set(int voice) {
+    s_sound = voice;
+    nvs_handle_t h;
+    if (nvs_open(NVS_NS, NVS_READWRITE, &h) == ESP_OK) {
+        nvs_set_u8(h, NVS_KEY_SOUND, (uint8_t)voice);
         nvs_commit(h);
         nvs_close(h);
     }

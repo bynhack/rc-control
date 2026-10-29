@@ -61,6 +61,11 @@ void ui_ffb_set(int pct);
 int ui_vol_get(void);
 void ui_vol_set(int pct);
 
+// Which engine sound (sound.h: SOUND_ROAD, SOUND_RALLY). Read every audio
+// block, so cached.
+int ui_sound_get(void);
+void ui_sound_set(int voice);
+
 // How the ELRS module is wired: false = one wire, half duplex (BETAFPV
 // module, CRSF pin only); true = two wires, full duplex (a Nano receiver
 // flashed as a TX). Read every frame by crsf.c, so cached.
