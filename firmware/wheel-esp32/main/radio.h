@@ -57,6 +57,10 @@ void ui_topspeed_set(int kmh);
 int ui_ffb_get(void);
 void ui_ffb_set(int pct);
 
+// Engine sound volume on the speaker, 0..100 % (sound.c). Default 60.
+int ui_vol_get(void);
+void ui_vol_set(int pct);
+
 // How the ELRS module is wired: false = one wire, half duplex (BETAFPV
 // module, CRSF pin only); true = two wires, full duplex (a Nano receiver
 // flashed as a TX). Read every frame by crsf.c, so cached.

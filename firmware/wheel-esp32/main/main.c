@@ -33,6 +33,9 @@
 #include "ffb.h"
 #include "multi.h"
 #include "radio.h"
+#if CONFIG_IDF_TARGET_ESP32P4
+#include "sound.h"
+#endif
 #include "wheel.h"
 
 static const char *TAG = "wheel";
@@ -333,6 +336,9 @@ void app_main(void) {
     crsf_start();
     multi_start();
     display_init();
+#if CONFIG_IDF_TARGET_ESP32P4
+    sound_start();
+#endif
 
     xTaskCreatePinnedToCore(usb_lib_task, "usb_lib", 4096, xTaskGetCurrentTaskHandle(), 2, NULL, 0);
     ulTaskNotifyTake(pdFALSE, pdMS_TO_TICKS(1000));

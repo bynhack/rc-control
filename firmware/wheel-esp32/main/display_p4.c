@@ -131,6 +131,7 @@ static const char *const TEXT[T_COUNT][2] = {
     [T_FLIP_BTN] = {"翻转 180°", "翻轉 180°"},
     [T_WIRE_ONE] = {"接法：单线", "接法：單線"},
     [T_WIRE_TWO] = {"接法：双线 Nano", "接法：雙線 Nano"},
+    [T_VOL] = {"引擎声音量", "引擎聲音量"},
     [T_FLIP_HINT] = {"板子倒着装时用。点一下会重启屏幕，再点一下翻回来。", "板子倒著裝時用。點一下會重啟螢幕，再點一下翻回來。"},
     [T_FFB_HINT] = {"车速越快，方向盘回正越有力；停车时很轻。第一次试的时候手轻扶方向盘，从小往大调。0% 关闭。",
                     "車速越快，方向盤回正越有力；停車時很輕。第一次試的時候手輕扶方向盤，從小往大調。0% 關閉。"},
@@ -422,6 +423,13 @@ static void on_ffb(lv_event_t *e) {
     ui_ffb_set(v < 0 ? 0 : (v > 100 ? 100 : v));
 }
 
+static lv_obj_t *s_vol_val;
+
+static void on_vol(lv_event_t *e) {
+    int v = ui_vol_get() + (int)(intptr_t)lv_event_get_user_data(e);
+    ui_vol_set(v < 0 ? 0 : (v > 100 ? 100 : v));
+}
+
 // The display's rotation is fixed when it starts, so flipping restarts.
 static void on_flip(lv_event_t *e) {
     ui_flip_set(!ui_flip_get());
@@ -470,6 +478,18 @@ static void build_drive_tab(lv_obj_t *t) {
     lv_obj_set_width(fh, 1024 - 2 * (M + 8));
     lv_label_set_long_mode(fh, LV_LABEL_LONG_WRAP);
     lv_obj_set_pos(fh, M + 8, 372);
+
+    // Engine sound, right of the force feedback row.
+    const int vx = 600;
+    setup_label(t, vx, 270, T_VOL);
+    for (int i = 0; i < 2; i++) {
+        lv_obj_t *b = button(t, vx + i * 260, 294, 68, 56, C_DIM, &lv_font_montserrat_20, i ? "+10" : "-10");
+        lv_obj_add_event_cb(b, on_vol, LV_EVENT_CLICKED, (void *)(intptr_t)(i ? 10 : -10));
+    }
+    s_vol_val = label(t, &lv_font_montserrat_32, C_TEXT, "");
+    lv_obj_set_width(s_vol_val, 180);
+    lv_obj_set_style_text_align(s_vol_val, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_pos(s_vol_val, vx + 74, 304);
 
     setup_label(t, M + 8, 440, T_FLIP);
     lv_obj_t *fb = button(t, M + 8, 464, 260, 56, C_CYAN, &cjk_20, "");
@@ -786,6 +806,8 @@ static void show_setup(const display_state_t *s) {
     set_text(s_kmh_val, buf);
     snprintf(buf, sizeof(buf), "%d%%", ui_ffb_get());
     set_text(s_ffb_val, buf);
+    snprintf(buf, sizeof(buf), "%d%%", ui_vol_get());
+    set_text(s_vol_val, buf);
     for (int i = 0; i < MULTI_PROTO_COUNT && i < 16; i++) {
         highlight(s_proto_btn[i], c->proto == i, c->kind == RADIO_MULTI_SERIAL ? C_AMBER : C_DIM);
     }
