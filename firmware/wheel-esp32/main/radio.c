@@ -26,7 +26,9 @@ static const char *TAG = "radio";
 #define DEFAULT_FFB 40
 // Bump when radio_config_t or car_t change, so an old blob is ignored.
 #define CFG_VERSION 1
-#define GARAGE_VERSION 1
+// 3: radio_config_t.trim (in what was padding, so 1 and 2 still load,
+// without a trim).
+#define GARAGE_VERSION 3
 
 // Surface protocols first; names are shown on the screen (display_p4.c
 // fonts must cover them). Option: CC2500 fine tune (S-FHSS -50 is the
@@ -75,18 +77,26 @@ static bool car_ok(const car_t *c) {
            c->top_kmh >= 5 && c->name[CAR_NAME_LEN - 1] == 0;
 }
 
+// Set when the saved cars are an older version, so they are saved again.
+static bool s_upgraded;
+
 static bool load_garage(nvs_handle_t h) {
     garage_t g;
     size_t len = sizeof(g);
-    if (nvs_get_blob(h, NVS_KEY_CARS, &g, &len) != ESP_OK || len != sizeof(g) || g.version != GARAGE_VERSION ||
-        g.active >= CAR_COUNT) {
+    if (nvs_get_blob(h, NVS_KEY_CARS, &g, &len) != ESP_OK || len != sizeof(g) ||
+        g.version < 1 || g.version > GARAGE_VERSION || g.active >= CAR_COUNT) {
         return false;
     }
     for (int i = 0; i < CAR_COUNT; i++) {
         if (!car_ok(&g.cars[i])) {
             g.cars[i] = DEFAULT_CAR;
         }
+        if (g.version < GARAGE_VERSION || g.cars[i].radio.trim < -TRIM_MAX || g.cars[i].radio.trim > TRIM_MAX) {
+            g.cars[i].radio.trim = 0;
+        }
     }
+    s_upgraded = g.version != GARAGE_VERSION;
+    g.version = GARAGE_VERSION;
     s_garage = g;
     return true;
 }
@@ -132,7 +142,7 @@ void radio_init(void) {
     } else {
         migrate(0);
     }
-    if (!loaded) {
+    if (!loaded || s_upgraded) {
         save_garage();
     }
     radio_config_t c = radio_config();
@@ -186,6 +196,22 @@ void car_rename(int i, const char *name) {
     strlcpy(s_garage.cars[i].name, name, CAR_NAME_LEN);
     portEXIT_CRITICAL(&s_lock);
     save_garage();
+}
+
+static volatile bool s_trim_cal;
+
+void trim_cal_set(bool on) {
+    s_trim_cal = on;
+}
+
+bool trim_cal_get(void) {
+    return s_trim_cal;
+}
+
+float radio_steering(const radio_config_t *c, float steering) {
+    float s = s_trim_cal ? steering : steering + c->trim / 1000.0f;
+    s = s < -1.0f ? -1.0f : (s > 1.0f ? 1.0f : s);
+    return c->rev_steer[c->kind] ? -s : s;
 }
 
 const char *radio_kind_name(radio_kind_t k) {

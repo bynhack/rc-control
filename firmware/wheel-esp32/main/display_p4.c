@@ -17,12 +17,14 @@
 
 #include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "bsp/display.h"
 #include "bsp/esp-bsp.h"
 #include "esp_log.h"
 #include "esp_system.h"
+#include "ffb.h"
 #include "lvgl.h"
 #include "dash_p4.h"
 #include "ui_p4.h"
@@ -101,8 +103,8 @@ static const char *const TEXT[T_COUNT][2] = {
     [T_CH_FMT] = {"CH1 转向 %d us     CH2 油门 %d us", "CH1 轉向 %d us     CH2 油門 %d us"},
     [T_HINT_ELRS] = {"单线接法（BETAFPV 高频头）：信号线接 GPIO28。左边按钮切换接法。",
                      "單線接法（BETAFPV 高頻頭）：信號線接 GPIO28。左邊按鈕切換接法。"},
-    [T_HINT_ELRS2] = {"双线接法（Nano 刷成发射机）：Nano 的 RX 接 GPIO28，TX 接 GPIO29。左边按钮切换接法。",
-                      "雙線接法（Nano 刷成發射機）：Nano 的 RX 接 GPIO28，TX 接 GPIO29。左邊按鈕切換接法。"},
+    [T_HINT_ELRS2] = {"双线接法（Nano 刷成发射机）：Nano 的 RX 接 GPIO28，TX 接 GPIO30。左边按钮切换接法。",
+                      "雙線接法（Nano 刷成發射機）：Nano 的 RX 接 GPIO28，TX 接 GPIO30。左邊按鈕切換接法。"},
     [T_HINT_SERIAL] = {"高频头旋钮拨到 0（转旋钮后要断电重开）。按“对频”或方向盘 N 键，再让接收机进入对频。"
                        "S-FHSS 不用按对频，接收机自己配。",
                        "高頻頭旋鈕撥到 0（轉旋鈕後要斷電重開）。按「對頻」或方向盤 N 鍵，再讓接收機進入對頻。"
@@ -141,8 +143,20 @@ static const char *const TEXT[T_COUNT][2] = {
     [T_CAR_PICK] = {"选择车辆", "選擇車輛"},
     [T_CAR_FMT] = {"车 %d", "車 %d"},
     [T_RENAME] = {"改名", "改名"},
-    [T_CAR_HINT] = {"点一下就换成这台车。“发射设置”和“驾驶设置”里改的（发射方式、协议、对频编号、反转、最高车速、声浪）都只存进选中的这台车。",
-                    "點一下就換成這台車。「發射設定」和「駕駛設定」裡改的（發射方式、協議、對頻編號、反轉、最高車速、聲浪）都只存進選中的這台車。"},
+    [T_CAR_HINT] = {"点一下就换成这台车。“发射设置”和“驾驶设置”里改的（发射方式、协议、对频编号、反转、方向回正、最高车速、声浪）都只存进选中的这台车。",
+                    "點一下就換成這台車。「發射設定」和「駕駛設定」裡改的（發射方式、協議、對頻編號、反轉、方向回正、最高車速、聲浪）都只存進選中的這台車。"},
+    [T_TRIM] = {"方向回正", "方向回正"},
+    [T_TRIM_ZERO] = {"居中", "居中"},
+    [T_TRIM_L_FMT] = {"偏左 %.1f%%", "偏左 %.1f%%"},
+    [T_TRIM_R_FMT] = {"偏右 %.1f%%", "偏右 %.1f%%"},
+    [T_TRIM_RESET] = {"归零", "歸零"},
+    [T_TRIM_SET] = {"用方向盘调", "用方向盤調"},
+    [T_TRIM_SAVE] = {"保存", "保存"},
+    [T_TRIM_CANCEL] = {"取消", "取消"},
+    [T_TRIM_HINT] = {"方向盘回中时车还往一边跑就用这个。每台车单独保存。",
+                     "方向盤回中時車還往一邊跑就用這個。每台車單獨保存。"},
+    [T_TRIM_HOW] = {"点火慢慢开，把方向盘转到车刚好走直线的位置，扶住，按“保存”。",
+                    "點火慢慢開，把方向盤轉到車剛好走直線的位置，扶住，按「保存」。"},
     [T_FLIP_HINT] = {"板子倒着装时用。点一下会重启屏幕，再点一下翻回来。", "板子倒著裝時用。點一下會重啟螢幕，再點一下翻回來。"},
     [T_FFB_HINT] = {"车速越快，方向盘回正越有力；停车时很轻。第一次试的时候手轻扶方向盘，从小往大调。0% 关闭。",
                     "車速越快，方向盤回正越有力；停車時很輕。第一次試的時候手輕扶方向盤，從小往大調。0% 關閉。"},
@@ -282,6 +296,45 @@ static void on_option(lv_event_t *e) {
     edit(add_option, (intptr_t)lv_event_get_user_data(e));
 }
 
+// Steering trim. Setting it leaves the settings for the dashboard, where a
+// panel shows the wheel position live: drive, hold the wheel where the car
+// runs straight, save.
+static lv_obj_t *s_trim_panel, *s_trim_live;
+static float s_steer_now; // the wheel, from the last display_show()
+
+static void set_trim(radio_config_t *c, intptr_t permille) {
+    int v = (int)permille;
+    c->trim = (int16_t)(v < -TRIM_MAX ? -TRIM_MAX : (v > TRIM_MAX ? TRIM_MAX : v));
+}
+
+static void on_trim_reset(lv_event_t *e) {
+    edit(set_trim, 0);
+}
+
+static void on_trim_start(lv_event_t *e) {
+    trim_cal_set(true);
+    lv_obj_add_flag(s_setup, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_remove_flag(s_trim_panel, LV_OBJ_FLAG_HIDDEN);
+}
+
+static void on_trim_done(lv_event_t *e) {
+    if (lv_event_get_user_data(e)) {
+        edit(set_trim, (intptr_t)lroundf(s_steer_now * 1000.0f));
+        ffb_recentre(); // the wheel is still held where the car ran straight
+    }
+    trim_cal_set(false);
+    lv_obj_add_flag(s_trim_panel, LV_OBJ_FLAG_HIDDEN);
+}
+
+// "偏右 2.4%" for thousandths of full lock.
+static void trim_text(char *buf, size_t n, int permille) {
+    if (permille == 0) {
+        snprintf(buf, n, "%s", tr(T_TRIM_ZERO));
+    } else {
+        snprintf(buf, n, tr(permille < 0 ? T_TRIM_L_FMT : T_TRIM_R_FMT), abs(permille) / 10.0);
+    }
+}
+
 static void on_rev_steer(lv_event_t *e) {
     edit(flip_steer, 0);
 }
@@ -329,6 +382,9 @@ static void on_tab(lv_event_t *e) {
 }
 
 static void on_setup_open(lv_event_t *e) {
+    if (trim_cal_get()) {
+        on_trim_done(e); // user data is NULL here: cancel
+    }
     control_ignition_off("SETUP");
     lv_obj_remove_flag(s_setup, LV_OBJ_FLAG_HIDDEN);
 }
@@ -440,7 +496,7 @@ static void on_ffb(lv_event_t *e) {
     ui_ffb_set(v < 0 ? 0 : (v > 100 ? 100 : v));
 }
 
-static lv_obj_t *s_vol_val;
+static lv_obj_t *s_vol_val, *s_trim_val;
 
 static lv_obj_t *s_sound_btn[SOUND_VOICES];
 
@@ -527,7 +583,26 @@ static void build_drive_tab(lv_obj_t *t) {
     track(lv_obj_get_child(fb, 0), T_FLIP_BTN);
     lv_obj_add_event_cb(fb, on_flip, LV_EVENT_CLICKED, NULL);
     lv_obj_t *flh = track(label(t, &cjk_16, C_DIM, ""), T_FLIP_HINT);
-    lv_obj_set_pos(flh, M + 8 + 280, 482);
+    lv_obj_set_width(flh, vx - M - 8 - 24);
+    lv_label_set_long_mode(flh, LV_LABEL_LONG_WRAP);
+    lv_obj_set_pos(flh, M + 8, 530);
+
+    // Steering trim (the active car's radio), right of the screen flip: set
+    // with the wheel on the dashboard (trim_overlay), or back to centre.
+    setup_label(t, vx, 440, T_TRIM);
+    s_trim_val = label(t, &cjk_24, C_TEXT, "");
+    lv_obj_set_width(s_trim_val, 150);
+    lv_obj_set_pos(s_trim_val, vx, 476);
+    lv_obj_t *cb = button(t, vx + 150, 464, 140, 56, C_AMBER, &cjk_20, "");
+    track(lv_obj_get_child(cb, 0), T_TRIM_SET);
+    lv_obj_add_event_cb(cb, on_trim_start, LV_EVENT_CLICKED, NULL);
+    lv_obj_t *z = button(t, vx + 302, 464, 1024 - M - 8 - vx - 302, 56, C_DIM, &cjk_20, "");
+    track(lv_obj_get_child(z, 0), T_TRIM_RESET);
+    lv_obj_add_event_cb(z, on_trim_reset, LV_EVENT_CLICKED, NULL);
+    lv_obj_t *th = track(label(t, &cjk_16, C_DIM, ""), T_TRIM_HINT);
+    lv_obj_set_width(th, 1024 - M - 8 - vx);
+    lv_label_set_long_mode(th, LV_LABEL_LONG_WRAP);
+    lv_obj_set_pos(th, vx, 530);
 }
 
 // ---- cars --------------------------------------------------------------------
@@ -738,6 +813,46 @@ static void build_setup(void) {
     lv_obj_set_pos(s_setup_hint, M + 8 + 320, 514);
 }
 
+// The trim panel over the dashboard, hidden until "用方向盘调".
+static void build_trim_panel(lv_obj_t *scr) {
+    const int w = 560, h = 210;
+    lv_obj_t *p = lv_obj_create(scr);
+    lv_obj_remove_style_all(p);
+    lv_obj_set_size(p, w, h);
+    lv_obj_set_pos(p, (1024 - w) / 2, 600 - h - 24);
+    lv_obj_set_style_radius(p, 16, 0);
+    lv_obj_set_style_bg_color(p, hex(C_BG), 0);
+    lv_obj_set_style_bg_opa(p, LV_OPA_90, 0);
+    lv_obj_set_style_border_color(p, hex(C_AMBER), 0);
+    lv_obj_set_style_border_width(p, 2, 0);
+    lv_obj_remove_flag(p, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(p, LV_OBJ_FLAG_HIDDEN);
+    s_trim_panel = p;
+    setup_label(p, 20, 14, T_TRIM);
+    s_trim_live = label(p, &cjk_32, C_TEXT, "");
+    lv_obj_set_pos(s_trim_live, 20, 40);
+    lv_obj_t *how = track(label(p, &cjk_16, C_DIM, ""), T_TRIM_HOW);
+    lv_obj_set_width(how, w - 40);
+    lv_label_set_long_mode(how, LV_LABEL_LONG_WRAP);
+    lv_obj_set_pos(how, 20, 90);
+    lv_obj_t *save = button(p, w - 20 - 2 * 140 - 12, h - 20 - 56, 140, 56, C_GREEN, &cjk_20, "");
+    track(lv_obj_get_child(save, 0), T_TRIM_SAVE);
+    lv_obj_add_event_cb(save, on_trim_done, LV_EVENT_CLICKED, (void *)1);
+    lv_obj_t *cancel = button(p, w - 20 - 140, h - 20 - 56, 140, 56, C_DIM, &cjk_20, "");
+    track(lv_obj_get_child(cancel, 0), T_TRIM_CANCEL);
+    lv_obj_add_event_cb(cancel, on_trim_done, LV_EVENT_CLICKED, NULL);
+}
+
+static void show_trim(const display_state_t *s) {
+    s_steer_now = s->ctl.steering;
+    if (lv_obj_has_flag(s_trim_panel, LV_OBJ_FLAG_HIDDEN)) {
+        return;
+    }
+    char buf[32];
+    trim_text(buf, sizeof(buf), (int)lroundf(s_steer_now * 1000.0f));
+    set_text(s_trim_live, buf);
+}
+
 void display_init(void) {
     bool flip = ui_flip_get();
     bsp_display_cfg_t cfg = {
@@ -763,6 +878,7 @@ void display_init(void) {
     dash_build(scr);
     build_top(scr);
     build_setup();
+    build_trim_panel(scr);
     bsp_display_unlock();
     ESP_LOGI(TAG, "7\" dashboard up");
 }
@@ -954,6 +1070,8 @@ static void show_setup(const display_state_t *s) {
     snprintf(buf, sizeof(buf), "%d", c->option);
     set_text(s_opt_val, buf);
     highlight(s_rev_steer, c->rev_steer[c->kind], C_CYAN);
+    trim_text(buf, sizeof(buf), c->trim);
+    set_text(s_trim_val, buf);
     highlight(s_rev_thr, c->rev_thr[c->kind], C_CYAN);
 
     bool serial = c->kind == RADIO_MULTI_SERIAL, elrs = c->kind == RADIO_ELRS;
@@ -990,6 +1108,7 @@ void display_show(const display_state_t *s) {
         return;
     }
     show_drive(s);
+    show_trim(s);
     show_status(s);
     show_link(s);
     show_setup(s);

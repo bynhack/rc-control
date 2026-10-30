@@ -1,7 +1,5 @@
 dependencies:
   idf: ">=5.1"
-  # USB host HID class driver (raw input reports for non-boot devices).
-  espressif/usb_host_hid: "^1.0.3"
   # ESP32-S3: 1.28" round GC9A01 status screen.
   espressif/esp_lcd_gc9a01:
     version: "^2.0.0"

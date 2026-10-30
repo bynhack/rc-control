@@ -14,4 +14,4 @@ endif()
 idf_component_register(SRCS ${srcs}
                        INCLUDE_DIRS "."
                        EMBED_FILES ${embed}
-                       PRIV_REQUIRES esp_timer esp_lcd driver esp_driver_uart esp_driver_gpio esp_driver_rmt nvs_flash)
+                       PRIV_REQUIRES usb_host_hid esp_timer esp_lcd driver esp_driver_uart esp_driver_gpio esp_driver_rmt nvs_flash)

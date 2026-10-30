@@ -255,12 +255,44 @@ static void usb_lib_task(void *arg) {
 #define FFB_DAMPER_OFF 0.25f
 #define FFB_DAMPER_SLOW 0.15f
 #define FFB_DAMPER_FAST 0.35f
+// Recentring: a spring's pull is in proportion to how far off centre the
+// wheel is, so a few degrees of trim would hardly move it. Its centre goes
+// past the middle by RECENTRE_GAIN times the offset (at least
+// RECENTRE_MIN_PUSH), which shrinks to nothing on arrival; done once within
+// RECENTRE_DONE for RECENTRE_SETTLE_US.
+#define FFB_SPRING_RECENTRE 1.0f
+#define FFB_DAMPER_RECENTRE 0.40f
+#define RECENTRE_GAIN 4.0f
+#define RECENTRE_MIN_PUSH 0.03f
+#define RECENTRE_DONE 0.005f
+#define RECENTRE_SETTLE_US 300000
 
 static void drive_ffb(const control_view_t *c, bool fresh) {
     if (!fresh) {
         ffb_set(0.0f, 0.0f);
         return;
     }
+    static int64_t settled_at = -1;
+    if (ffb_recentring()) {
+        float p = c->steering;
+        int64_t now = esp_timer_get_time();
+        if (fabsf(p) > RECENTRE_DONE) {
+            settled_at = -1;
+            float push = fmaxf(fabsf(p) * RECENTRE_GAIN, RECENTRE_MIN_PUSH);
+            ffb_set_centre(p > 0.0f ? -push : push);
+        } else {
+            ffb_set_centre(0.0f);
+            if (settled_at < 0) {
+                settled_at = now;
+            } else if (now - settled_at > RECENTRE_SETTLE_US) {
+                ffb_recentre_stop();
+            }
+        }
+        ffb_set(FFB_SPRING_RECENTRE, FFB_DAMPER_RECENTRE);
+        return;
+    }
+    settled_at = -1;
+    ffb_set_centre(0.0f);
     if (!c->engine) {
         ffb_set(FFB_SPRING_OFF, FFB_DAMPER_OFF);
         return;

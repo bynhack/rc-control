@@ -24,7 +24,7 @@ static const char *TAG = "crsf";
 // module's RX) in two-wire mode, where the module's TX comes in on
 // CRSF_RX_PIN.
 #define CRSF_PIN 28
-#define CRSF_RX_PIN 29
+#define CRSF_RX_PIN 30
 #else
 #define CRSF_PIN 17
 #define CRSF_RX_PIN 16
@@ -218,7 +218,7 @@ static void sender_task(void *arg) {
             for (int c = 0; c < CHANNELS; c++) {
                 ch[c] = CH_CENTER;
             }
-            ch[STEERING_CHANNEL - 1] = to_channel(rc.rev_steer[RADIO_ELRS] ? -o.steering : o.steering);
+            ch[STEERING_CHANNEL - 1] = to_channel(radio_steering(&rc, o.steering));
             ch[THROTTLE_CHANNEL - 1] = to_channel(rc.rev_thr[RADIO_ELRS] ? -o.throttle : o.throttle);
             len = rc_frame(ch, out);
         }

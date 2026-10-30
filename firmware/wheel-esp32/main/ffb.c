@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "radio.h"
@@ -27,11 +28,17 @@ static const char *TAG = "ffb";
 #define CTRL_ENABLE_ACTUATORS 0x01
 #define CTRL_RESET 0x08
 #define DURATION_INFINITE 0xffff
+#define NO_TRIGGER 0xff
+#define AXIS_X 0x01
+#define DIRECTION_ENABLE 0x04
+#define DIRECTION_X 9000 // hundredths of a degree
 #define LOAD_SUCCESS 1
 
-#define PERIOD_MS 50
-// Resend a coefficient only when it moves at least this much (of 32767).
+#define PERIOD_MS 20
+// Resend a coefficient or the spring centre only when it moves at least this
+// much (of 32767).
 #define MIN_CHANGE 300
+#define MIN_CENTRE_CHANGE 60
 
 typedef struct {
     uint8_t block; // 0 = not created
@@ -41,12 +48,20 @@ typedef struct {
 static portMUX_TYPE s_lock = portMUX_INITIALIZER_UNLOCKED;
 static hid_host_device_handle_t s_dev;
 static bool s_attach_pending;
-static float s_spring, s_damper;
+static float s_spring, s_damper, s_centre;
 static effect_t s_fx[2];
+static int s_centre_sent; // spring centre last sent
 static int s_gain = -1;
 
+// Output reports go on the interrupt OUT endpoint: the R5 acknowledges a
+// SET_REPORT on the control pipe but ignores it. Devices without one get the
+// control pipe.
 static esp_err_t out(uint8_t *r, size_t len) {
-    return hid_class_request_set_report(s_dev, HID_REPORT_TYPE_OUTPUT, r[0], r, len);
+    esp_err_t e = hid_host_device_send_output_report(s_dev, r, len);
+    if (e == ESP_ERR_NOT_SUPPORTED) {
+        e = hid_class_request_set_report(s_dev, HID_REPORT_TYPE_OUTPUT, r[0], r, len);
+    }
+    return e;
 }
 
 static void put16(uint8_t *p, int v) {
@@ -77,16 +92,19 @@ static esp_err_t set_effect(uint8_t block, uint8_t type) {
     uint8_t r[22] = {RID_SET_EFFECT, block, type};
     put16(r + 3, DURATION_INFINITE); // duration
     // trigger repeat, sample period, start delay: 0
-    r[11] = 255;   // gain
-    r[12] = 0;     // no trigger button
-    r[13] = 0x01;  // X axis only, direction disabled
+    r[11] = 255;        // gain
+    r[12] = NO_TRIGGER; // no trigger button
+    // The R5 needs the direction: with it disabled (or 0, which points along
+    // Y) a condition effect does nothing on the wheel.
+    r[13] = AXIS_X | DIRECTION_ENABLE;
+    put16(r + 14, DIRECTION_X);
     return out(r, sizeof(r));
 }
 
-// Symmetric condition on X around the centre, full saturation.
-static esp_err_t set_condition(uint8_t block, int coef) {
+// Symmetric condition on X around a centre, full saturation.
+static esp_err_t set_condition(uint8_t block, int coef, int centre) {
     uint8_t r[15] = {RID_SET_CONDITION, block, 0};
-    put16(r + 3, 0);      // centre
+    put16(r + 3, centre); // centre
     put16(r + 5, coef);   // positive coefficient
     put16(r + 7, coef);   // negative coefficient
     put16(r + 9, 32767);  // positive saturation
@@ -113,7 +131,7 @@ static void setup(void) {
         if (s_fx[i].block == 0) {
             continue;
         }
-        if (set_effect(s_fx[i].block, types[i]) != ESP_OK || set_condition(s_fx[i].block, 0) != ESP_OK ||
+        if (set_effect(s_fx[i].block, types[i]) != ESP_OK || set_condition(s_fx[i].block, 0, 0) != ESP_OK ||
             start(s_fx[i].block) != ESP_OK) {
             ESP_LOGW(TAG, "effect %d setup failed", types[i]);
             s_fx[i].block = 0;
@@ -121,6 +139,7 @@ static void setup(void) {
         }
         s_fx[i].last = 0;
     }
+    s_centre_sent = 0;
     ESP_LOGI(TAG, "spring block %d, damper block %d", s_fx[0].block, s_fx[1].block);
 }
 
@@ -132,6 +151,7 @@ static void task(void *arg) {
         s_attach_pending = false;
         bool have = s_dev != NULL;
         float want[2] = {s_spring, s_damper};
+        float centre_f = s_centre;
         portEXIT_CRITICAL(&s_lock);
         if (!have) {
             continue;
@@ -147,16 +167,23 @@ static void task(void *arg) {
                 s_gain = gain;
             }
         }
+        centre_f = centre_f < -1.0f ? -1.0f : (centre_f > 1.0f ? 1.0f : centre_f);
+        int centre = (int)lroundf(centre_f * 32767.0f);
         for (int i = 0; i < 2; i++) {
             if (s_fx[i].block == 0) {
                 continue;
             }
             float w = want[i] < 0.0f ? 0.0f : (want[i] > 1.0f ? 1.0f : want[i]);
             int coef = (int)lroundf(w * 32767.0f);
-            if (s_fx[i].last < 0 || abs(coef - s_fx[i].last) >= MIN_CHANGE ||
-                (coef == 0 && s_fx[i].last != 0)) {
-                if (set_condition(s_fx[i].block, coef) == ESP_OK) {
+            int c = i == 0 ? centre : 0; // only the spring has a centre
+            bool moved = i == 0 && (abs(c - s_centre_sent) >= MIN_CENTRE_CHANGE || (c == 0 && s_centre_sent != 0));
+            if (s_fx[i].last < 0 || abs(coef - s_fx[i].last) >= MIN_CHANGE || (coef == 0 && s_fx[i].last != 0) ||
+                moved) {
+                if (set_condition(s_fx[i].block, coef, c) == ESP_OK) {
                     s_fx[i].last = coef;
+                    if (i == 0) {
+                        s_centre_sent = c;
+                    }
                 }
             }
         }
@@ -180,6 +207,28 @@ void ffb_detach(void) {
     s_dev = NULL;
     portEXIT_CRITICAL(&s_lock);
     memset(s_fx, 0, sizeof(s_fx));
+}
+
+#define RECENTRE_US 4000000
+
+static volatile int64_t s_recentre_until = -1;
+
+void ffb_recentre(void) {
+    s_recentre_until = esp_timer_get_time() + RECENTRE_US;
+}
+
+void ffb_recentre_stop(void) {
+    s_recentre_until = -1;
+}
+
+void ffb_set_centre(float centre) {
+    portENTER_CRITICAL(&s_lock);
+    s_centre = centre;
+    portEXIT_CRITICAL(&s_lock);
+}
+
+bool ffb_recentring(void) {
+    return esp_timer_get_time() < s_recentre_until;
 }
 
 void ffb_set(float spring, float damper) {

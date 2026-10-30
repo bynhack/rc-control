@@ -2,7 +2,7 @@
 // Serial mode (dial at 0): the protocol comes from radio.h. PPM mode (dial
 // 1-E): the module's own protocol table. radio.h picks which, or neither.
 //
-// Wiring (P4 7B): module PPM pin <- GPIO30 (terminal P3), GND -> GND,
+// Wiring (P4 7B): module PPM pin <- GPIO29 (terminal P3), GND -> GND,
 // VCC -> 5 V (the module takes 5-14 V). One way only: the module's
 // telemetry (S.Port pin) isn't read yet, so its red LED is the only sign of
 // life: slow blink = no valid input, solid = transmitting, fast blink =

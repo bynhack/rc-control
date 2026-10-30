@@ -30,7 +30,12 @@ typedef struct {
     // Per kind: the ELRS car and the MULTI cars are wired differently.
     bool rev_steer[RADIO_KINDS];
     bool rev_thr[RADIO_KINDS];
+    // Steering trim, like the knob on a stock radio, for a car that doesn't
+    // run straight with the wheel centred: thousandths of full lock, + = right.
+    int16_t trim;
 } radio_config_t;
+
+#define TRIM_MAX 300
 
 // Loads the saved cars (or the defaults). Call before the radios start.
 void radio_init(void);
@@ -39,6 +44,13 @@ radio_config_t radio_config(void);
 // Applies to the active car and saves.
 void radio_set(const radio_config_t *c);
 const char *radio_kind_name(radio_kind_t k);
+// The steering the car gets for the driver's -1..+1: trimmed, then reversed
+// if this output is wired that way.
+float radio_steering(const radio_config_t *c, float steering);
+// Setting the trim: while on, the steering goes out untrimmed, so the driver
+// holds the wheel where the car runs straight and saves that position.
+void trim_cal_set(bool on);
+bool trim_cal_get(void);
 
 // ---- cars --------------------------------------------------------------------
 //

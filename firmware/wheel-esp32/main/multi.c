@@ -16,7 +16,7 @@ static const char *TAG = "multi";
 
 #define MULTI_UART UART_NUM_2
 #if CONFIG_IDF_TARGET_ESP32P4
-#define MULTI_PIN 30
+#define MULTI_PIN 29
 #else
 #define MULTI_PIN 18
 #endif
@@ -174,7 +174,7 @@ static void sender_task(void *arg) {
         int64_t now = esp_timer_get_time();
         control_tick(now);
         control_output_t o = control_output(now);
-        float steer = c.rev_steer[c.kind] ? -o.steering : o.steering;
+        float steer = radio_steering(&c, o.steering);
         float thr = c.rev_thr[c.kind] ? -o.throttle : o.throttle;
         TickType_t period = pdMS_TO_TICKS(FRAME_PERIOD_MS);
         if (c.kind == RADIO_MULTI_SERIAL) {
