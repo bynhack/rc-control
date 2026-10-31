@@ -22,6 +22,7 @@ typedef enum { GEAR_R = -1, GEAR_N = 0, GEAR_1 = 1, GEAR_2 = 2, GEAR_3 = 3 } gea
 typedef struct {
     float steering; // -1 .. +1
     float throttle; // -1 .. +1 to the ESC: + drive, - brake or reverse
+    bool reverse;   // a negative throttle is reverse, not the brake
 } control_output_t;
 
 typedef struct {

@@ -1,7 +1,8 @@
 // Force feedback on the wheel base, through the standard USB PID reports
 // (what DirectInput games use; the MOZA R5 descriptor has them all).
 //
-// Two condition effects stay running: a centring spring and a damper. The
+// Three condition effects stay running: a centring spring, a damper and an
+// end stop. The
 // driving code sets their strengths every frame (ffb_set); a task pushes
 // changes to the base. The overall strength is the base's device gain,
 // set on the dashboard (ui_ffb_get / ui_ffb_set in radio.h).
@@ -17,6 +18,10 @@ void ffb_detach(void);
 
 // 0..1 each: centring spring stiffness and damping.
 void ffb_set(float spring, float damper);
+
+// End stop at the car's full lock: past -edge..+edge of the steering axis
+// the wheel is pushed back hard. 1 (the default) = none.
+void ffb_set_stop(float edge);
 
 // Where the spring pulls to, -1..1 of the steering axis; 0 normally.
 void ffb_set_centre(float centre);

@@ -267,11 +267,20 @@ static void usb_lib_task(void *arg) {
 #define RECENTRE_DONE 0.005f
 #define RECENTRE_SETTLE_US 300000
 
-static void drive_ffb(const control_view_t *c, bool fresh) {
+// A car that reaches full lock early on the wheel (steer_deg) gets a
+// stiffer centring spring, so it pulls about as hard at the car's lock as
+// before at the wheel's, up to SPRING_SCALE_MAX times.
+#define SPRING_SCALE_MAX 2.5f
+
+static void drive_ffb(const control_view_t *c, const radio_config_t *cfg, bool fresh) {
     if (!fresh) {
         ffb_set(0.0f, 0.0f);
+        ffb_set_stop(1.0f);
         return;
     }
+    float lock = (float)cfg->steer_deg / (float)WHEEL_DEG;
+    ffb_set_stop(lock);
+    float scale = fminf(1.0f / lock, SPRING_SCALE_MAX);
     static int64_t settled_at = -1;
     if (ffb_recentring()) {
         float p = c->steering;
@@ -294,11 +303,11 @@ static void drive_ffb(const control_view_t *c, bool fresh) {
     settled_at = -1;
     ffb_set_centre(0.0f);
     if (!c->engine) {
-        ffb_set(FFB_SPRING_OFF, FFB_DAMPER_OFF);
+        ffb_set(FFB_SPRING_OFF * scale, FFB_DAMPER_OFF);
         return;
     }
     float v = fabsf(c->speed);
-    ffb_set(FFB_SPRING_SLOW + (FFB_SPRING_FAST - FFB_SPRING_SLOW) * v,
+    ffb_set((FFB_SPRING_SLOW + (FFB_SPRING_FAST - FFB_SPRING_SLOW) * v) * scale,
             FFB_DAMPER_SLOW + (FFB_DAMPER_FAST - FFB_DAMPER_SLOW) * v);
 }
 
@@ -339,7 +348,7 @@ static void ui_task(void *arg) {
             .button = (button && now - button_at < (int64_t)BUTTON_SHOW_MS * 1000) ? button : 0,
         };
         display_show(&ds);
-        drive_ffb(&ds.ctl, fresh);
+        drive_ffb(&ds.ctl, &ds.cfg, fresh);
 
         if (tick % PRINT_EVERY != 0) {
             continue;

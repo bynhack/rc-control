@@ -45,12 +45,18 @@ typedef struct {
     int last;      // last coefficient sent, -1 = none
 } effect_t;
 
+// The effects: centring spring, damper, and the end stop (a second spring
+// with a dead band, so it only pushes once the wheel is past the car's lock).
+enum { FX_SPRING, FX_DAMPER, FX_STOP, FX_COUNT };
+#define STOP_COEF 32767
+
 static portMUX_TYPE s_lock = portMUX_INITIALIZER_UNLOCKED;
 static hid_host_device_handle_t s_dev;
 static bool s_attach_pending;
-static float s_spring, s_damper, s_centre;
-static effect_t s_fx[2];
+static float s_spring, s_damper, s_centre, s_stop = 1.0f;
+static effect_t s_fx[FX_COUNT];
 static int s_centre_sent; // spring centre last sent
+static int s_stop_sent;   // end stop dead band last sent
 static int s_gain = -1;
 
 // Output reports go on the interrupt OUT endpoint: the R5 acknowledges a
@@ -102,14 +108,14 @@ static esp_err_t set_effect(uint8_t block, uint8_t type) {
 }
 
 // Symmetric condition on X around a centre, full saturation.
-static esp_err_t set_condition(uint8_t block, int coef, int centre) {
+static esp_err_t set_condition(uint8_t block, int coef, int centre, int dead_band) {
     uint8_t r[15] = {RID_SET_CONDITION, block, 0};
     put16(r + 3, centre); // centre
     put16(r + 5, coef);   // positive coefficient
     put16(r + 7, coef);   // negative coefficient
     put16(r + 9, 32767);  // positive saturation
     put16(r + 11, 32767); // negative saturation
-    put16(r + 13, 0);     // dead band
+    put16(r + 13, dead_band);
     return out(r, sizeof(r));
 }
 
@@ -125,13 +131,13 @@ static void setup(void) {
     ctrl[1] = CTRL_ENABLE_ACTUATORS;
     out(ctrl, sizeof(ctrl));
     s_gain = -1;
-    static const uint8_t types[2] = {ET_SPRING, ET_DAMPER};
-    for (int i = 0; i < 2; i++) {
+    static const uint8_t types[FX_COUNT] = {ET_SPRING, ET_DAMPER, ET_SPRING};
+    for (int i = 0; i < FX_COUNT; i++) {
         s_fx[i] = (effect_t){.block = create(types[i]), .last = -1};
         if (s_fx[i].block == 0) {
             continue;
         }
-        if (set_effect(s_fx[i].block, types[i]) != ESP_OK || set_condition(s_fx[i].block, 0, 0) != ESP_OK ||
+        if (set_effect(s_fx[i].block, types[i]) != ESP_OK || set_condition(s_fx[i].block, 0, 0, 0) != ESP_OK ||
             start(s_fx[i].block) != ESP_OK) {
             ESP_LOGW(TAG, "effect %d setup failed", types[i]);
             s_fx[i].block = 0;
@@ -140,7 +146,9 @@ static void setup(void) {
         s_fx[i].last = 0;
     }
     s_centre_sent = 0;
-    ESP_LOGI(TAG, "spring block %d, damper block %d", s_fx[0].block, s_fx[1].block);
+    s_stop_sent = -1;
+    ESP_LOGI(TAG, "spring block %d, damper block %d, end stop block %d", s_fx[FX_SPRING].block,
+             s_fx[FX_DAMPER].block, s_fx[FX_STOP].block);
 }
 
 static void task(void *arg) {
@@ -152,6 +160,7 @@ static void task(void *arg) {
         bool have = s_dev != NULL;
         float want[2] = {s_spring, s_damper};
         float centre_f = s_centre;
+        float stop = s_stop;
         portEXIT_CRITICAL(&s_lock);
         if (!have) {
             continue;
@@ -169,6 +178,12 @@ static void task(void *arg) {
         }
         centre_f = centre_f < -1.0f ? -1.0f : (centre_f > 1.0f ? 1.0f : centre_f);
         int centre = (int)lroundf(centre_f * 32767.0f);
+        // End stop: off (coefficient 0) at full wheel lock.
+        int band = stop >= 1.0f ? 32767 : (int)lroundf((stop < 0.0f ? 0.0f : stop) * 32767.0f);
+        if (s_fx[FX_STOP].block && band != s_stop_sent &&
+            set_condition(s_fx[FX_STOP].block, band >= 32767 ? 0 : STOP_COEF, 0, band) == ESP_OK) {
+            s_stop_sent = band;
+        }
         for (int i = 0; i < 2; i++) {
             if (s_fx[i].block == 0) {
                 continue;
@@ -179,7 +194,7 @@ static void task(void *arg) {
             bool moved = i == 0 && (abs(c - s_centre_sent) >= MIN_CENTRE_CHANGE || (c == 0 && s_centre_sent != 0));
             if (s_fx[i].last < 0 || abs(coef - s_fx[i].last) >= MIN_CHANGE || (coef == 0 && s_fx[i].last != 0) ||
                 moved) {
-                if (set_condition(s_fx[i].block, coef, c) == ESP_OK) {
+                if (set_condition(s_fx[i].block, coef, c, 0) == ESP_OK) {
                     s_fx[i].last = coef;
                     if (i == 0) {
                         s_centre_sent = c;
@@ -229,6 +244,12 @@ void ffb_set_centre(float centre) {
 
 bool ffb_recentring(void) {
     return esp_timer_get_time() < s_recentre_until;
+}
+
+void ffb_set_stop(float edge) {
+    portENTER_CRITICAL(&s_lock);
+    s_stop = edge;
+    portEXIT_CRITICAL(&s_lock);
 }
 
 void ffb_set(float spring, float damper) {

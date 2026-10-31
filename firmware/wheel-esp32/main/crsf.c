@@ -219,7 +219,7 @@ static void sender_task(void *arg) {
                 ch[c] = CH_CENTER;
             }
             ch[STEERING_CHANNEL - 1] = to_channel(radio_steering(&rc, o.steering));
-            ch[THROTTLE_CHANNEL - 1] = to_channel(rc.rev_thr[RADIO_ELRS] ? -o.throttle : o.throttle);
+            ch[THROTTLE_CHANNEL - 1] = to_channel(radio_throttle(&rc, o.throttle, o.reverse));
             len = rc_frame(ch, out);
         }
 

@@ -33,9 +33,26 @@ typedef struct {
     // Steering trim, like the knob on a stock radio, for a car that doesn't
     // run straight with the wheel centred: thousandths of full lock, + = right.
     int16_t trim;
+    // Handling, per car (the 操控 tab). The wheel turns WHEEL_DEG lock to
+    // lock (Pit House); the car's full lock comes at steer_deg of it.
+    uint16_t steer_deg;
+    // Steering end points, thousandths of full lock: [0] left, [1] right,
+    // so the servo stops where the car's steering does.
+    uint16_t steer_max[2];
+    // Where the ESC starts to move the car, thousandths of full throttle:
+    // [0] forward, [1] reverse. The pedal's travel starts there.
+    uint16_t thr_start[2];
+    // Softer steering around the centre, percent (0 = linear).
+    uint8_t expo;
+    uint8_t reserved[7];
 } radio_config_t;
 
 #define TRIM_MAX 300
+#define WHEEL_DEG 900
+#define STEER_DEG_MIN 90
+#define STEER_MAX_MIN 300
+#define THR_START_MAX 400
+#define EXPO_MAX 80
 
 // Loads the saved cars (or the defaults). Call before the radios start.
 void radio_init(void);
@@ -44,13 +61,25 @@ radio_config_t radio_config(void);
 // Applies to the active car and saves.
 void radio_set(const radio_config_t *c);
 const char *radio_kind_name(radio_kind_t k);
-// The steering the car gets for the driver's -1..+1: trimmed, then reversed
-// if this output is wired that way.
-float radio_steering(const radio_config_t *c, float steering);
-// Setting the trim: while on, the steering goes out untrimmed, so the driver
-// holds the wheel where the car runs straight and saves that position.
-void trim_cal_set(bool on);
-bool trim_cal_get(void);
+// The wheel's -1..+1 (WHEEL_DEG) as the car's steering before trim and end
+// points: scaled to steer_deg, then expo.
+float radio_steer_shape(const radio_config_t *c, float wheel);
+// The steering the car gets for the wheel: shaped, trimmed, held to the end
+// points, then reversed if this output is wired that way.
+float radio_steering(const radio_config_t *c, float wheel);
+// The throttle the ESC gets for control_output(): forward and reverse start
+// at thr_start, braking is passed as it is; reversed if wired that way.
+float radio_throttle(const radio_config_t *c, float throttle, bool reverse);
+
+// Setting a handling value with the wheel or pedals on the dashboard. While
+// one is set, the step it sets is left out, so the driver finds the right
+// spot and saves it: CAL_TRIM leaves out the trim, CAL_ENDS the end points,
+// CAL_THROTTLE the start points (and control.c then sends the gas pedal
+// straight, up to CAL_THROTTLE_MAX).
+typedef enum { CAL_NONE, CAL_TRIM, CAL_ENDS, CAL_THROTTLE } radio_cal_t;
+#define CAL_THROTTLE_MAX 0.5f
+void radio_cal_set(radio_cal_t cal);
+radio_cal_t radio_cal_get(void);
 
 // ---- cars --------------------------------------------------------------------
 //

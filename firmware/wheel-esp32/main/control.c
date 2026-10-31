@@ -4,6 +4,7 @@
 #include <stddef.h>
 
 #include "freertos/FreeRTOS.h"
+#include "radio.h"
 
 // Pedal travel below this counts as released.
 #define PEDAL_DEAD 0.03f
@@ -103,8 +104,19 @@ static bool braking_locked(void) {
 static void model_locked(float dt) {
     float max = gear_max(s_gear);
     float target = 0.0f;
+    // Setting the throttle start: the pedal goes out as it is (up to
+    // CAL_THROTTLE_MAX, in any forward gear or R), so the driver can find
+    // where the car starts to move.
+    bool cal = radio_cal_get() == CAL_THROTTLE;
+    if (cal) {
+        max = s_gear == GEAR_N ? 0.0f : CAL_THROTTLE_MAX;
+    }
     if (!braking_locked() && s_gas > PEDAL_DEAD) {
         target = s_gas * max * (s_gear == GEAR_R ? -1.0f : 1.0f);
+    }
+    if (cal && !braking_locked() && target * s_speed >= 0.0f) {
+        s_speed = target;
+        return;
     }
     if (braking_locked()) {
         s_speed = approach(s_speed, 0.0f, BRAKE_RATE * s_brake * dt);
@@ -154,7 +166,7 @@ static void output_locked(int64_t now_us) {
     } else if (thr < 0.0f) {
         s_rev = REV_IDLE; // braking forward motion
     }
-    s_out = (control_output_t){.steering = s_steering, .throttle = thr};
+    s_out = (control_output_t){.steering = s_steering, .throttle = thr, .reverse = thr < 0.0f && s_rev == REV_ON};
 }
 
 void control_init(int64_t timeout_us) {

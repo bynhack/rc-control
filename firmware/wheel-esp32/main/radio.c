@@ -1,5 +1,7 @@
 #include "radio.h"
 
+#include <math.h>
+#include <stddef.h>
 #include <string.h>
 
 #include "esp_log.h"
@@ -27,8 +29,9 @@ static const char *TAG = "radio";
 // Bump when radio_config_t or car_t change, so an old blob is ignored.
 #define CFG_VERSION 1
 // 3: radio_config_t.trim (in what was padding, so 1 and 2 still load,
-// without a trim).
-#define GARAGE_VERSION 3
+// without a trim). 4: the handling fields, after the old ones (garage_v3_t
+// loads into them with the defaults).
+#define GARAGE_VERSION 4
 
 // Surface protocols first; names are shown on the screen (display_p4.c
 // fonts must cover them). Option: CC2500 fine tune (S-FHSS -50 is the
@@ -43,7 +46,7 @@ const int MULTI_PROTO_COUNT = sizeof(MULTI_PROTOS) / sizeof(MULTI_PROTOS[0]);
 
 typedef struct {
     uint8_t version;
-    radio_config_t cfg;
+    uint32_t cfg[4]; // radio_config_t as it was then
 } stored_t;
 
 typedef struct {
@@ -52,13 +55,55 @@ typedef struct {
     car_t cars[CAR_COUNT];
 } garage_t;
 
+// Versions 1..3: radio_config_t was its first 16 bytes.
+typedef struct {
+    char name[CAR_NAME_LEN];
+    uint32_t radio[4];
+    uint8_t top_kmh;
+    uint8_t sound;
+} car_v3_t;
+
+typedef struct {
+    uint8_t version;
+    uint8_t active;
+    car_v3_t cars[CAR_COUNT];
+} garage_v3_t;
+
+_Static_assert(sizeof(car_v3_t) == 36 && sizeof(garage_v3_t) == 220, "old garage layout");
+_Static_assert(offsetof(radio_config_t, steer_deg) == 16, "new fields after the old ones");
+
 static portMUX_TYPE s_lock = portMUX_INITIALIZER_UNLOCKED;
 static garage_t s_garage;
 
 static const car_t DEFAULT_CAR = {
-    .radio = {.kind = RADIO_ELRS, .rev_steer = {true, true, true}},
+    .radio = {.kind = RADIO_ELRS,
+              .rev_steer = {true, true, true},
+              .steer_deg = WHEEL_DEG,
+              .steer_max = {1000, 1000}},
     .top_kmh = DEFAULT_KMH,
 };
+
+// Handling values out of range (or zero, from an older version) become the
+// defaults.
+static void fix_handling(radio_config_t *r) {
+    if (r->trim < -TRIM_MAX || r->trim > TRIM_MAX) {
+        r->trim = 0;
+    }
+    if (r->steer_deg < STEER_DEG_MIN || r->steer_deg > WHEEL_DEG) {
+        r->steer_deg = WHEEL_DEG;
+    }
+    for (int i = 0; i < 2; i++) {
+        if (r->steer_max[i] < STEER_MAX_MIN || r->steer_max[i] > 1000) {
+            r->steer_max[i] = 1000;
+        }
+        if (r->thr_start[i] > THR_START_MAX) {
+            r->thr_start[i] = 0;
+        }
+    }
+    if (r->expo > EXPO_MAX) {
+        r->expo = 0;
+    }
+}
 
 static void save_garage(void) {
     portENTER_CRITICAL(&s_lock);
@@ -81,19 +126,40 @@ static bool car_ok(const car_t *c) {
 static bool s_upgraded;
 
 static bool load_garage(nvs_handle_t h) {
-    garage_t g;
-    size_t len = sizeof(g);
-    if (nvs_get_blob(h, NVS_KEY_CARS, &g, &len) != ESP_OK || len != sizeof(g) ||
-        g.version < 1 || g.version > GARAGE_VERSION || g.active >= CAR_COUNT) {
+    static garage_t g; // static: too big for the stack it runs on
+    size_t len = 0;
+    if (nvs_get_blob(h, NVS_KEY_CARS, NULL, &len) != ESP_OK) {
+        return false;
+    }
+    if (len == sizeof(garage_v3_t)) {
+        static garage_v3_t o;
+        if (nvs_get_blob(h, NVS_KEY_CARS, &o, &len) != ESP_OK || o.version < 1 || o.version > 3) {
+            return false;
+        }
+        memset(&g, 0, sizeof(g));
+        g.version = o.version;
+        g.active = o.active;
+        for (int i = 0; i < CAR_COUNT; i++) {
+            memcpy(g.cars[i].name, o.cars[i].name, CAR_NAME_LEN);
+            memcpy(&g.cars[i].radio, o.cars[i].radio, sizeof(o.cars[i].radio));
+            g.cars[i].top_kmh = o.cars[i].top_kmh;
+            g.cars[i].sound = o.cars[i].sound;
+            if (o.version < 3) {
+                g.cars[i].radio.trim = 0;
+            }
+        }
+    } else if (len != sizeof(g) || nvs_get_blob(h, NVS_KEY_CARS, &g, &len) != ESP_OK ||
+               g.version != GARAGE_VERSION) {
+        return false;
+    }
+    if (g.active >= CAR_COUNT) {
         return false;
     }
     for (int i = 0; i < CAR_COUNT; i++) {
         if (!car_ok(&g.cars[i])) {
             g.cars[i] = DEFAULT_CAR;
         }
-        if (g.version < GARAGE_VERSION || g.cars[i].radio.trim < -TRIM_MAX || g.cars[i].radio.trim > TRIM_MAX) {
-            g.cars[i].radio.trim = 0;
-        }
+        fix_handling(&g.cars[i].radio);
     }
     s_upgraded = g.version != GARAGE_VERSION;
     g.version = GARAGE_VERSION;
@@ -111,9 +177,13 @@ static void migrate(nvs_handle_t h) {
     car_t *c = &s_garage.cars[0];
     stored_t st;
     size_t len = sizeof(st);
-    if (nvs_get_blob(h, NVS_KEY, &st, &len) == ESP_OK && len == sizeof(st) && st.version == CFG_VERSION &&
-        st.cfg.kind < RADIO_KINDS && st.cfg.proto < MULTI_PROTO_COUNT) {
-        c->radio = st.cfg;
+    radio_config_t r = c->radio;
+    if (nvs_get_blob(h, NVS_KEY, &st, &len) == ESP_OK && len == sizeof(st) && st.version == CFG_VERSION) {
+        memcpy(&r, st.cfg, sizeof(st.cfg));
+        r.trim = 0;
+        if (r.kind < RADIO_KINDS && r.proto < MULTI_PROTO_COUNT) {
+            c->radio = r;
+        }
     }
     uint8_t v;
     if (nvs_get_u8(h, NVS_KEY_KMH, &v) == ESP_OK && v >= 5) {
@@ -198,20 +268,46 @@ void car_rename(int i, const char *name) {
     save_garage();
 }
 
-static volatile bool s_trim_cal;
+static volatile radio_cal_t s_cal;
 
-void trim_cal_set(bool on) {
-    s_trim_cal = on;
+void radio_cal_set(radio_cal_t cal) {
+    s_cal = cal;
 }
 
-bool trim_cal_get(void) {
-    return s_trim_cal;
+radio_cal_t radio_cal_get(void) {
+    return s_cal;
 }
 
-float radio_steering(const radio_config_t *c, float steering) {
-    float s = s_trim_cal ? steering : steering + c->trim / 1000.0f;
-    s = s < -1.0f ? -1.0f : (s > 1.0f ? 1.0f : s);
+static float clampf(float v) {
+    return v < -1.0f ? -1.0f : (v > 1.0f ? 1.0f : v);
+}
+
+float radio_steer_shape(const radio_config_t *c, float wheel) {
+    float s = clampf(wheel * (float)WHEEL_DEG / (float)c->steer_deg);
+    float e = c->expo / 100.0f;
+    return s * (1.0f - e) + e * s * s * s;
+}
+
+float radio_steering(const radio_config_t *c, float wheel) {
+    radio_cal_t cal = s_cal;
+    float s = radio_steer_shape(c, wheel);
+    if (cal != CAL_TRIM) {
+        s = clampf(s + c->trim / 1000.0f);
+    }
+    if (cal != CAL_ENDS) {
+        s *= c->steer_max[s < 0.0f ? 0 : 1] / 1000.0f;
+    }
     return c->rev_steer[c->kind] ? -s : s;
+}
+
+float radio_throttle(const radio_config_t *c, float throttle, bool reverse) {
+    float t = throttle;
+    if (s_cal != CAL_THROTTLE && (t > 0.0f || reverse)) {
+        float start = c->thr_start[t > 0.0f ? 0 : 1] / 1000.0f;
+        t = copysignf(start + fabsf(t) * (1.0f - start), t);
+    }
+    t = clampf(t);
+    return c->rev_thr[c->kind] ? -t : t;
 }
 
 const char *radio_kind_name(radio_kind_t k) {

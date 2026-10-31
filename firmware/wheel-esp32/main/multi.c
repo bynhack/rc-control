@@ -175,7 +175,7 @@ static void sender_task(void *arg) {
         control_tick(now);
         control_output_t o = control_output(now);
         float steer = radio_steering(&c, o.steering);
-        float thr = c.rev_thr[c.kind] ? -o.throttle : o.throttle;
+        float thr = radio_throttle(&c, o.throttle, o.reverse);
         TickType_t period = pdMS_TO_TICKS(FRAME_PERIOD_MS);
         if (c.kind == RADIO_MULTI_SERIAL) {
             send_serial(&c, steer, thr, now);

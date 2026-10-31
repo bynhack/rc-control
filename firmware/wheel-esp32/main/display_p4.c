@@ -143,8 +143,8 @@ static const char *const TEXT[T_COUNT][2] = {
     [T_CAR_PICK] = {"选择车辆", "選擇車輛"},
     [T_CAR_FMT] = {"车 %d", "車 %d"},
     [T_RENAME] = {"改名", "改名"},
-    [T_CAR_HINT] = {"点一下就换成这台车。“发射设置”和“驾驶设置”里改的（发射方式、协议、对频编号、反转、方向回正、最高车速、声浪）都只存进选中的这台车。",
-                    "點一下就換成這台車。「發射設定」和「駕駛設定」裡改的（發射方式、協議、對頻編號、反轉、方向回正、最高車速、聲浪）都只存進選中的這台車。"},
+    [T_CAR_HINT] = {"点一下就换成这台车。“发射设置”“驾驶设置”“操控”里改的（发射方式、协议、对频编号、反转、最高车速、声浪、转角、舵量、油门起步点、方向回正）都只存进选中的这台车。",
+                    "點一下就換成這台車。「發射設定」「駕駛設定」「操控」裡改的（發射方式、協議、對頻編號、反轉、最高車速、聲浪、轉角、舵量、油門起步點、方向回正）都只存進選中的這台車。"},
     [T_TRIM] = {"方向回正", "方向回正"},
     [T_TRIM_ZERO] = {"居中", "居中"},
     [T_TRIM_L_FMT] = {"偏左 %.1f%%", "偏左 %.1f%%"},
@@ -160,6 +160,35 @@ static const char *const TEXT[T_COUNT][2] = {
     [T_FLIP_HINT] = {"板子倒着装时用。点一下会重启屏幕，再点一下翻回来。", "板子倒著裝時用。點一下會重啟螢幕，再點一下翻回來。"},
     [T_FFB_HINT] = {"车速越快，方向盘回正越有力；停车时很轻。第一次试的时候手轻扶方向盘，从小往大调。0% 关闭。",
                     "車速越快，方向盤回正越有力；停車時很輕。第一次試的時候手輕扶方向盤，從小往大調。0% 關閉。"},
+    [T_TAB_HANDLE] = {"操控", "操控"},
+    [T_RANGE] = {"方向盘转角", "方向盤轉角"},
+    [T_RANGE_HINT] = {"方向盘转到这个角度车轮就打死，再往外方向盘会顶住。越大转向越稳，越小越灵敏。Pit House 保持 900°。",
+                      "方向盤轉到這個角度車輪就打死，再往外方向盤會頂住。越大轉向越穩，越小越靈敏。Pit House 保持 900°。"},
+    [T_EXPO] = {"中心柔和", "中心柔和"},
+    [T_EXPO_HINT] = {"越大，方向盘中间一段转向越细，打得越多才转得越快，直线更稳。0% 为线性。",
+                     "越大，方向盤中間一段轉向越細，打得越多才轉得越快，直線更穩。0% 為線性。"},
+    [T_ENDS] = {"舵量", "舵量"},
+    [T_ENDS_FMT] = {"左 %d%%  右 %d%%", "左 %d%%  右 %d%%"},
+    [T_ENDS_HINT] = {"打到底时舵机还在响（顶死），或者左右打死的角度不一样时用。",
+                     "打到底時舵機還在響（頂死），或者左右打死的角度不一樣時用。"},
+    [T_ENDS_HOW] = {"点火，方向盘慢慢往左打，车轮刚好打到底时按“存左”；往右打，按“存右”。调的时候舵机会打到最大。",
+                    "點火，方向盤慢慢往左打，車輪剛好打到底時按「存左」；往右打，按「存右」。調的時候舵機會打到最大。"},
+    [T_ENDS_RESET] = {"恢复", "恢復"},
+    [T_ENDS_SAVE_L] = {"存左", "存左"},
+    [T_ENDS_SAVE_R] = {"存右", "存右"},
+    [T_SIDE_L_FMT] = {"向左 %.1f%%", "向左 %.1f%%"},
+    [T_SIDE_R_FMT] = {"向右 %.1f%%", "向右 %.1f%%"},
+    [T_THR] = {"油门起步点", "油門起步點"},
+    [T_THR_FMT] = {"前进 %.1f%%  倒车 %.1f%%", "前進 %.1f%%  倒車 %.1f%%"},
+    [T_THR_SET] = {"用油门调", "用油門調"},
+    [T_THR_HINT] = {"油门要踩一段车才动就用这个。设好以后一踩车就走，每个档位都一样。",
+                    "油門要踩一段車才動就用這個。設好以後一踩車就走，每個檔位都一樣。"},
+    [T_THR_HOW] = {"点火挂 1 档（倒车挂 R），慢慢踩油门，车刚开始动时按“保存”。前进、倒车各存一次。车会动，先架起来或放在空地上。",
+                   "點火掛 1 檔（倒車掛 R），慢慢踩油門，車剛開始動時按「保存」。前進、倒車各存一次。車會動，先架起來或放在空地上。"},
+    [T_THR_LIVE_F] = {"前进 %.1f%%", "前進 %.1f%%"},
+    [T_THR_LIVE_R] = {"倒车 %.1f%%", "倒車 %.1f%%"},
+    [T_THR_LIVE_N] = {"挂 1 档或 R 档", "掛 1 檔或 R 檔"},
+    [T_SAVED_FMT] = {"已存：%s", "已存：%s"},
     [T_TOP_SPEED] = {"最高车速", "最高車速"},
     [T_TOP_HINT] = {"车上没有测速器：仪表的车速 = 估算的速度比例 × 最高车速。按这台车的实际极速填写。",
                     "車上沒有測速器：儀表的車速 = 估算的速度比例 × 最高車速。按這台車的實際極速填寫。"},
@@ -174,7 +203,7 @@ static const char *tr(int id) {
 }
 
 // Labels with fixed text, re-set when the language changes.
-#define MAX_TLABELS 64
+#define MAX_TLABELS 128
 static struct {
     lv_obj_t *obj;
     int id;
@@ -296,34 +325,126 @@ static void on_option(lv_event_t *e) {
     edit(add_option, (intptr_t)lv_event_get_user_data(e));
 }
 
-// Steering trim. Setting it leaves the settings for the dashboard, where a
-// panel shows the wheel position live: drive, hold the wheel where the car
-// runs straight, save.
-static lv_obj_t *s_trim_panel, *s_trim_live;
-static float s_steer_now; // the wheel, from the last display_show()
+// Handling (the 操控 tab). The trim, end points and throttle start are set
+// on the dashboard: a panel shows the live value, the driver drives and
+// saves. radio_cal_set() leaves the step being set out meanwhile.
+static lv_obj_t *s_cal_panel, *s_cal_title, *s_cal_live, *s_cal_saved, *s_cal_how, *s_cal_btn[3];
+static float s_steer_now; // the car's steering before trim, from the last display_show()
+static float s_cal_out;   // what the step being set sees: steering before end points, or throttle
+static gear_t s_gear_now;
+enum { ACT_CANCEL, ACT_SAVE, ACT_SAVE_L, ACT_SAVE_R };
+
+static int clampi(int v, int lo, int hi) {
+    return v < lo ? lo : (v > hi ? hi : v);
+}
 
 static void set_trim(radio_config_t *c, intptr_t permille) {
-    int v = (int)permille;
-    c->trim = (int16_t)(v < -TRIM_MAX ? -TRIM_MAX : (v > TRIM_MAX ? TRIM_MAX : v));
+    c->trim = (int16_t)clampi((int)permille, -TRIM_MAX, TRIM_MAX);
+}
+
+static void set_end(radio_config_t *c, intptr_t side_permille) {
+    int side = side_permille < 0 ? 0 : 1;
+    c->steer_max[side] = (uint16_t)clampi(abs((int)side_permille), STEER_MAX_MIN, 1000);
+}
+
+static void reset_ends(radio_config_t *c, intptr_t unused) {
+    c->steer_max[0] = c->steer_max[1] = 1000;
+}
+
+static void set_thr_start(radio_config_t *c, intptr_t rev_permille) {
+    int rev = rev_permille < 0 ? 1 : 0;
+    c->thr_start[rev] = (uint16_t)clampi(abs((int)rev_permille), 0, THR_START_MAX);
+}
+
+static void reset_thr(radio_config_t *c, intptr_t unused) {
+    c->thr_start[0] = c->thr_start[1] = 0;
+}
+
+static void add_range(radio_config_t *c, intptr_t d) {
+    c->steer_deg = (uint16_t)clampi(c->steer_deg + (int)d, STEER_DEG_MIN, WHEEL_DEG);
+}
+
+static void add_expo(radio_config_t *c, intptr_t d) {
+    c->expo = (uint8_t)clampi(c->expo + (int)d, 0, EXPO_MAX);
 }
 
 static void on_trim_reset(lv_event_t *e) {
     edit(set_trim, 0);
 }
 
-static void on_trim_start(lv_event_t *e) {
-    trim_cal_set(true);
-    lv_obj_add_flag(s_setup, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_remove_flag(s_trim_panel, LV_OBJ_FLAG_HIDDEN);
+static void on_ends_reset(lv_event_t *e) {
+    edit(reset_ends, 0);
 }
 
-static void on_trim_done(lv_event_t *e) {
-    if (lv_event_get_user_data(e)) {
-        edit(set_trim, (intptr_t)lroundf(s_steer_now * 1000.0f));
-        ffb_recentre(); // the wheel is still held where the car ran straight
+static void on_thr_reset(lv_event_t *e) {
+    edit(reset_thr, 0);
+}
+
+static void on_range(lv_event_t *e) {
+    edit(add_range, (intptr_t)lv_event_get_user_data(e));
+}
+
+static void on_expo(lv_event_t *e) {
+    edit(add_expo, (intptr_t)lv_event_get_user_data(e));
+}
+
+// The panel's buttons per step: left (hidden if none), middle, right.
+static void cal_open(radio_cal_t cal) {
+    static const int title[] = {[CAL_TRIM] = T_TRIM, [CAL_ENDS] = T_ENDS, [CAL_THROTTLE] = T_THR};
+    static const int how[] = {[CAL_TRIM] = T_TRIM_HOW, [CAL_ENDS] = T_ENDS_HOW, [CAL_THROTTLE] = T_THR_HOW};
+    static const int btn[][3] = {[CAL_TRIM] = {-1, T_TRIM_SAVE, T_TRIM_CANCEL},
+                                 [CAL_ENDS] = {T_ENDS_SAVE_L, T_ENDS_SAVE_R, T_DONE},
+                                 [CAL_THROTTLE] = {-1, T_TRIM_SAVE, T_TRIM_CANCEL}};
+    static const int act[][3] = {[CAL_TRIM] = {0, ACT_SAVE, ACT_CANCEL},
+                                 [CAL_ENDS] = {ACT_SAVE_L, ACT_SAVE_R, ACT_CANCEL},
+                                 [CAL_THROTTLE] = {0, ACT_SAVE, ACT_CANCEL}};
+    radio_cal_set(cal);
+    set_text(s_cal_title, tr(title[cal]));
+    set_text(s_cal_how, tr(how[cal]));
+    for (int i = 0; i < 3; i++) {
+        if (btn[cal][i] < 0) {
+            lv_obj_add_flag(s_cal_btn[i], LV_OBJ_FLAG_HIDDEN);
+            continue;
+        }
+        lv_obj_remove_flag(s_cal_btn[i], LV_OBJ_FLAG_HIDDEN);
+        set_text(lv_obj_get_child(s_cal_btn[i], 0), tr(btn[cal][i]));
+        lv_obj_set_user_data(s_cal_btn[i], (void *)(intptr_t)act[cal][i]);
     }
-    trim_cal_set(false);
-    lv_obj_add_flag(s_trim_panel, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(s_setup, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_remove_flag(s_cal_panel, LV_OBJ_FLAG_HIDDEN);
+}
+
+static void on_cal_start(lv_event_t *e) {
+    cal_open((radio_cal_t)(intptr_t)lv_event_get_user_data(e));
+}
+
+static void cal_close(void) {
+    radio_cal_set(CAL_NONE);
+    lv_obj_add_flag(s_cal_panel, LV_OBJ_FLAG_HIDDEN);
+}
+
+static void on_cal_btn(lv_event_t *e) {
+    int a = (int)(intptr_t)lv_obj_get_user_data(lv_event_get_target(e));
+    radio_cal_t cal = radio_cal_get();
+    int v = (int)lroundf(s_cal_out * 1000.0f);
+    if (a == ACT_CANCEL) {
+        cal_close();
+    } else if (cal == CAL_TRIM) {
+        edit(set_trim, (intptr_t)lroundf(s_steer_now * 1000.0f));
+        cal_close();
+        ffb_recentre(); // the wheel is still held where the car ran straight
+    } else if (cal == CAL_ENDS) {
+        // Each side from its own side of the centre only.
+        if ((a == ACT_SAVE_L && v < 0) || (a == ACT_SAVE_R && v > 0)) {
+            edit(set_end, v);
+        }
+    } else if (cal == CAL_THROTTLE) {
+        // Forward in a forward gear, reverse in R; nothing in N or braking.
+        if ((s_gear_now >= GEAR_1 && v > 0) || (s_gear_now == GEAR_R && v < 0)) {
+            edit(set_thr_start, v);
+            cal_close();
+        }
+    }
 }
 
 // "偏右 2.4%" for thousandths of full lock.
@@ -364,7 +485,7 @@ static void on_lang(lv_event_t *e) {
     }
 }
 
-enum { TAB_CAR, TAB_RADIO, TAB_DRIVE, TAB_STATUS, TABS };
+enum { TAB_CAR, TAB_RADIO, TAB_DRIVE, TAB_HANDLE, TAB_STATUS, TABS };
 static lv_obj_t *s_tab_page[TABS], *s_tab_btn[TABS];
 static lv_obj_t *s_kmh_val;
 static int s_kmh;
@@ -382,8 +503,8 @@ static void on_tab(lv_event_t *e) {
 }
 
 static void on_setup_open(lv_event_t *e) {
-    if (trim_cal_get()) {
-        on_trim_done(e); // user data is NULL here: cancel
+    if (radio_cal_get() != CAL_NONE) {
+        cal_close();
     }
     control_ignition_off("SETUP");
     lv_obj_remove_flag(s_setup, LV_OBJ_FLAG_HIDDEN);
@@ -586,23 +707,76 @@ static void build_drive_tab(lv_obj_t *t) {
     lv_obj_set_width(flh, vx - M - 8 - 24);
     lv_label_set_long_mode(flh, LV_LABEL_LONG_WRAP);
     lv_obj_set_pos(flh, M + 8, 530);
+}
 
-    // Steering trim (the active car's radio), right of the screen flip: set
-    // with the wheel on the dashboard (trim_overlay), or back to centre.
-    setup_label(t, vx, 440, T_TRIM);
-    s_trim_val = label(t, &cjk_24, C_TEXT, "");
-    lv_obj_set_width(s_trim_val, 150);
-    lv_obj_set_pos(s_trim_val, vx, 476);
-    lv_obj_t *cb = button(t, vx + 150, 464, 140, 56, C_AMBER, &cjk_20, "");
-    track(lv_obj_get_child(cb, 0), T_TRIM_SET);
-    lv_obj_add_event_cb(cb, on_trim_start, LV_EVENT_CLICKED, NULL);
-    lv_obj_t *z = button(t, vx + 302, 464, 1024 - M - 8 - vx - 302, 56, C_DIM, &cjk_20, "");
-    track(lv_obj_get_child(z, 0), T_TRIM_RESET);
-    lv_obj_add_event_cb(z, on_trim_reset, LV_EVENT_CLICKED, NULL);
-    lv_obj_t *th = track(label(t, &cjk_16, C_DIM, ""), T_TRIM_HINT);
-    lv_obj_set_width(th, 1024 - M - 8 - vx);
-    lv_label_set_long_mode(th, LV_LABEL_LONG_WRAP);
-    lv_obj_set_pos(th, vx, 530);
+// A value between minus and plus buttons; returns the value label.
+static lv_obj_t *stepper(lv_obj_t *t, int x, int y, const int steps[], const char *const names[], int n,
+                         lv_event_cb_t cb) {
+    const int bw = 64, vw = 140;
+    for (int i = 0; i < n; i++) {
+        int bx = x + i * (bw + 6) + (i >= n / 2 ? vw + 12 : 0);
+        lv_obj_t *b = button(t, bx, y, bw, 56, C_DIM, &lv_font_montserrat_20, names[i]);
+        lv_obj_add_event_cb(b, cb, LV_EVENT_CLICKED, (void *)(intptr_t)steps[i]);
+    }
+    lv_obj_t *v = label(t, &cjk_32, C_TEXT, "");
+    lv_obj_set_width(v, vw);
+    lv_obj_set_style_text_align(v, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_set_pos(v, x + (n / 2) * (bw + 6), y + 10);
+    return v;
+}
+
+// A value, a button that sets it on the dashboard, and one back to the
+// default; returns the value label.
+static lv_obj_t *cal_row(lv_obj_t *t, int x, int y, int set_id, radio_cal_t cal, int reset_id, lv_event_cb_t reset) {
+    lv_obj_t *v = label(t, &cjk_20, C_TEXT, "");
+    lv_obj_set_width(v, 200);
+    lv_label_set_long_mode(v, LV_LABEL_LONG_WRAP);
+    lv_obj_set_pos(v, x, y + 4);
+    lv_obj_t *sb = button(t, x + 206, y, 140, 56, C_AMBER, &cjk_20, "");
+    track(lv_obj_get_child(sb, 0), set_id);
+    lv_obj_add_event_cb(sb, on_cal_start, LV_EVENT_CLICKED, (void *)(intptr_t)cal);
+    lv_obj_t *rb = button(t, x + 352, y, 110, 56, C_DIM, &cjk_20, "");
+    track(lv_obj_get_child(rb, 0), reset_id);
+    lv_obj_add_event_cb(rb, reset, LV_EVENT_CLICKED, NULL);
+    return v;
+}
+
+static lv_obj_t *hint_at(lv_obj_t *t, int x, int y, int id) {
+    lv_obj_t *h = track(label(t, &cjk_16, C_DIM, ""), id);
+    lv_obj_set_width(h, 470);
+    lv_label_set_long_mode(h, LV_LABEL_LONG_WRAP);
+    lv_obj_set_pos(h, x, y);
+    return h;
+}
+
+static lv_obj_t *s_range_val, *s_expo_val, *s_ends_val, *s_thr_val;
+
+// Handling tab: how the active car answers the wheel and the pedals.
+static void build_handle_tab(lv_obj_t *t) {
+    const int lx = M + 8, rx = 532;
+    static const int rsteps[4] = {-90, -10, 10, 90};
+    static const char *const rnames[4] = {"-90", "-10", "+10", "+90"};
+    setup_label(t, lx, 78, T_RANGE);
+    s_range_val = stepper(t, lx, 102, rsteps, rnames, 4, on_range);
+    hint_at(t, lx, 166, T_RANGE_HINT);
+
+    static const int esteps[2] = {-10, 10};
+    static const char *const enames[2] = {"-10", "+10"};
+    setup_label(t, rx, 78, T_EXPO);
+    s_expo_val = stepper(t, rx, 102, esteps, enames, 2, on_expo);
+    hint_at(t, rx, 166, T_EXPO_HINT);
+
+    setup_label(t, lx, 250, T_ENDS);
+    s_ends_val = cal_row(t, lx, 274, T_TRIM_SET, CAL_ENDS, T_ENDS_RESET, on_ends_reset);
+    hint_at(t, lx, 338, T_ENDS_HINT);
+
+    setup_label(t, rx, 250, T_THR);
+    s_thr_val = cal_row(t, rx, 274, T_THR_SET, CAL_THROTTLE, T_TRIM_RESET, on_thr_reset);
+    hint_at(t, rx, 338, T_THR_HINT);
+
+    setup_label(t, lx, 420, T_TRIM);
+    s_trim_val = cal_row(t, lx, 444, T_TRIM_SET, CAL_TRIM, T_TRIM_RESET, on_trim_reset);
+    hint_at(t, lx, 508, T_TRIM_HINT);
 }
 
 // ---- cars --------------------------------------------------------------------
@@ -731,14 +905,15 @@ static void build_setup(void) {
     for (int i = 1; i < TABS; i++) {
         lv_obj_add_flag(s_tab_page[i], LV_OBJ_FLAG_HIDDEN);
     }
-    static const int tabs[TABS] = {T_TAB_CAR, T_SETUP_TITLE, T_TAB_DRIVE, T_STATUS};
+    static const int tabs[TABS] = {T_TAB_CAR, T_SETUP_TITLE, T_TAB_DRIVE, T_TAB_HANDLE, T_STATUS};
     for (int i = 0; i < TABS; i++) {
-        s_tab_btn[i] = button(p, M + 8 + i * 136, 12, 128, 48, C_CYAN, &cjk_20, "");
+        s_tab_btn[i] = button(p, M + 8 + i * 118, 12, 112, 48, C_CYAN, &cjk_20, "");
         track(lv_obj_get_child(s_tab_btn[i], 0), tabs[i]);
         lv_obj_add_event_cb(s_tab_btn[i], on_tab, LV_EVENT_CLICKED, (void *)(intptr_t)i);
     }
     build_car_tab(s_tab_page[TAB_CAR]);
     build_drive_tab(s_tab_page[TAB_DRIVE]);
+    build_handle_tab(s_tab_page[TAB_HANDLE]);
     build_status(s_tab_page[TAB_STATUS]);
     lv_obj_t *done = button(p, 1024 - M - 160, 12, 160, 48, C_GREEN, &cjk_20, "");
     track(lv_obj_get_child(done, 0), T_DONE);
@@ -813,9 +988,10 @@ static void build_setup(void) {
     lv_obj_set_pos(s_setup_hint, M + 8 + 320, 514);
 }
 
-// The trim panel over the dashboard, hidden until "用方向盘调".
-static void build_trim_panel(lv_obj_t *scr) {
-    const int w = 560, h = 210;
+// The setting panel over the dashboard (trim, end points, throttle start),
+// hidden until one of the 操控 tab's buttons; cal_open() fills it in.
+static void build_cal_panel(lv_obj_t *scr) {
+    const int w = 600, h = 230;
     lv_obj_t *p = lv_obj_create(scr);
     lv_obj_remove_style_all(p);
     lv_obj_set_size(p, w, h);
@@ -827,30 +1003,76 @@ static void build_trim_panel(lv_obj_t *scr) {
     lv_obj_set_style_border_width(p, 2, 0);
     lv_obj_remove_flag(p, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_add_flag(p, LV_OBJ_FLAG_HIDDEN);
-    s_trim_panel = p;
-    setup_label(p, 20, 14, T_TRIM);
-    s_trim_live = label(p, &cjk_32, C_TEXT, "");
-    lv_obj_set_pos(s_trim_live, 20, 40);
-    lv_obj_t *how = track(label(p, &cjk_16, C_DIM, ""), T_TRIM_HOW);
-    lv_obj_set_width(how, w - 40);
-    lv_label_set_long_mode(how, LV_LABEL_LONG_WRAP);
-    lv_obj_set_pos(how, 20, 90);
-    lv_obj_t *save = button(p, w - 20 - 2 * 140 - 12, h - 20 - 56, 140, 56, C_GREEN, &cjk_20, "");
-    track(lv_obj_get_child(save, 0), T_TRIM_SAVE);
-    lv_obj_add_event_cb(save, on_trim_done, LV_EVENT_CLICKED, (void *)1);
-    lv_obj_t *cancel = button(p, w - 20 - 140, h - 20 - 56, 140, 56, C_DIM, &cjk_20, "");
-    track(lv_obj_get_child(cancel, 0), T_TRIM_CANCEL);
-    lv_obj_add_event_cb(cancel, on_trim_done, LV_EVENT_CLICKED, NULL);
+    s_cal_panel = p;
+    s_cal_title = label(p, &cjk_16, C_DIM, "");
+    lv_obj_set_pos(s_cal_title, 20, 14);
+    s_cal_live = label(p, &cjk_32, C_TEXT, "");
+    lv_obj_set_pos(s_cal_live, 20, 40);
+    s_cal_saved = label(p, &cjk_16, C_DIM, "");
+    lv_obj_set_width(s_cal_saved, 300);
+    lv_obj_set_style_text_align(s_cal_saved, LV_TEXT_ALIGN_RIGHT, 0);
+    lv_obj_set_pos(s_cal_saved, w - 20 - 300, 52);
+    s_cal_how = label(p, &cjk_16, C_DIM, "");
+    lv_obj_set_width(s_cal_how, w - 40);
+    lv_label_set_long_mode(s_cal_how, LV_LABEL_LONG_WRAP);
+    lv_obj_set_pos(s_cal_how, 20, 90);
+    for (int i = 0; i < 3; i++) {
+        s_cal_btn[i] = button(p, w - 20 - (3 - i) * 140 - (2 - i) * 12, h - 20 - 56, 140, 56,
+                              i == 2 ? C_DIM : C_GREEN, &cjk_20, "");
+        lv_obj_add_event_cb(s_cal_btn[i], on_cal_btn, LV_EVENT_CLICKED, NULL);
+    }
 }
 
-static void show_trim(const display_state_t *s) {
-    s_steer_now = s->ctl.steering;
-    if (lv_obj_has_flag(s_trim_panel, LV_OBJ_FLAG_HIDDEN)) {
+static void ends_text(char *buf, size_t n, const radio_config_t *c) {
+    snprintf(buf, n, tr(T_ENDS_FMT), (c->steer_max[0] + 5) / 10, (c->steer_max[1] + 5) / 10);
+}
+
+static void thr_text(char *buf, size_t n, const radio_config_t *c) {
+    snprintf(buf, n, tr(T_THR_FMT), c->thr_start[0] / 10.0, c->thr_start[1] / 10.0);
+}
+
+static void show_cal(const display_state_t *s) {
+    const radio_config_t *c = &s->cfg;
+    s_steer_now = radio_steer_shape(c, s->ctl.steering);
+    s_gear_now = s->ctl.gear;
+    radio_cal_t cal = radio_cal_get();
+    if (cal == CAL_NONE || lv_obj_has_flag(s_cal_panel, LV_OBJ_FLAG_HIDDEN)) {
         return;
     }
-    char buf[32];
-    trim_text(buf, sizeof(buf), (int)lroundf(s_steer_now * 1000.0f));
-    set_text(s_trim_live, buf);
+    char buf[64], saved[64];
+    if (cal == CAL_TRIM) {
+        s_cal_out = s_steer_now;
+        trim_text(buf, sizeof(buf), (int)lroundf(s_steer_now * 1000.0f));
+        saved[0] = 0;
+    } else if (cal == CAL_ENDS) {
+        // What the servo gets with no end points (trim included).
+        float v = s_steer_now + c->trim / 1000.0f;
+        s_cal_out = v < -1.0f ? -1.0f : (v > 1.0f ? 1.0f : v);
+        int pm = (int)lroundf(s_cal_out * 1000.0f);
+        if (pm == 0) {
+            snprintf(buf, sizeof(buf), "%s", tr(T_TRIM_ZERO));
+        } else {
+            snprintf(buf, sizeof(buf), tr(pm < 0 ? T_SIDE_L_FMT : T_SIDE_R_FMT), abs(pm) / 10.0);
+        }
+        ends_text(saved, sizeof(saved), c);
+    } else {
+        s_cal_out = s->ctl.output.throttle;
+        if (s_gear_now == GEAR_N) {
+            snprintf(buf, sizeof(buf), "%s", tr(T_THR_LIVE_N));
+        } else {
+            snprintf(buf, sizeof(buf), tr(s_gear_now == GEAR_R ? T_THR_LIVE_R : T_THR_LIVE_F),
+                     fabsf(s_cal_out) * 100.0f);
+        }
+        thr_text(saved, sizeof(saved), c);
+    }
+    set_text(s_cal_live, buf);
+    char line[80];
+    if (saved[0]) {
+        snprintf(line, sizeof(line), tr(T_SAVED_FMT), saved);
+    } else {
+        line[0] = 0;
+    }
+    set_text(s_cal_saved, line);
 }
 
 void display_init(void) {
@@ -878,7 +1100,7 @@ void display_init(void) {
     dash_build(scr);
     build_top(scr);
     build_setup();
-    build_trim_panel(scr);
+    build_cal_panel(scr);
     bsp_display_unlock();
     ESP_LOGI(TAG, "7\" dashboard up");
 }
@@ -1072,6 +1294,14 @@ static void show_setup(const display_state_t *s) {
     highlight(s_rev_steer, c->rev_steer[c->kind], C_CYAN);
     trim_text(buf, sizeof(buf), c->trim);
     set_text(s_trim_val, buf);
+    snprintf(buf, sizeof(buf), "%d°", c->steer_deg);
+    set_text(s_range_val, buf);
+    snprintf(buf, sizeof(buf), "%d%%", c->expo);
+    set_text(s_expo_val, buf);
+    ends_text(buf, sizeof(buf), c);
+    set_text(s_ends_val, buf);
+    thr_text(buf, sizeof(buf), c);
+    set_text(s_thr_val, buf);
     highlight(s_rev_thr, c->rev_thr[c->kind], C_CYAN);
 
     bool serial = c->kind == RADIO_MULTI_SERIAL, elrs = c->kind == RADIO_ELRS;
@@ -1108,7 +1338,7 @@ void display_show(const display_state_t *s) {
         return;
     }
     show_drive(s);
-    show_trim(s);
+    show_cal(s);
     show_status(s);
     show_link(s);
     show_setup(s);
