@@ -1,186 +1,19 @@
-# wheel-esp32：不用電腦的方向盤遙控器
+# wheel-esp32
 
-把模擬賽車方向盤變成遙控車的發射機：方向盤和踏板用 USB 主機讀進 ESP32，經過照真車設計的駕駛模型（點火、檔位、滑行、剎車）和每台車各自的操控設定，再從選定的發射方式發給車。7 吋觸控螢幕是儀表盤和設定頁，喇叭放合成的引擎聲浪，方向盤有力回饋。全程不用電腦。
+The standalone wheel controller firmware for the ESP32-P4 7" touch board.
+獨立方向盤控制器的韌體 · 独立方向盘控制器的固件
 
-- 主要硬體：微雪 ESP32-P4-WIFI6-Touch-LCD-7B + MOZA R5
-- 發射方式：ELRS、四合一（MULTI）、玩具車原裝遙控器主板
-
-## 硬體
-
-| 部件 | 型號 | 用途 |
-|---|---|---|
-| 主控＋儀表屏 | 微雪 ESP32-P4-WIFI6-Touch-LCD-7B | USB-A（OTG）接方向盤；USB-C「USB TO UART」燒錄和 log；7" 1024×600 觸控 |
-| 方向盤 | MOZA R5（346e:0004） | Pit House 裡方向盤角度設 900° |
-| ELRS 發射 | CYCLONE Nano RX2400 刷「RX as TX」（雙線全雙工），或 BETAFPV 高頻頭（單線） | 見[ELRS](#elrs) |
-| 四合一（可選） | iRangeX IRX4+ 裸板 | 見[四合一](#四合一multi) |
-| 遙控器主板（可選） | MCP4728 四路 I2C DAC 模組 | 見[遙控器主板](#遙控器主板) |
-| 喇叭（可選） | 8Ω 3W，PH2.0 | 插板子的喇叭座（板載 NS4150B 功放） |
-
-### 接線（P4 板）
-
-| 用途 | P4 腳位 | 說明 |
-|---|---|---|
-| ELRS（Nano，雙線） | GPIO28 → Nano RX，GPIO30 ← Nano TX | P3 端子；Nano 的 5V 接 CAN／RS485 端子第 1 腳 |
-| ELRS（BETAFPV，單線） | GPIO28 → CRSF | 半雙工，400000 baud |
-| 四合一 PPM／串口 | GPIO29 → 模組 PPM 腳 | 模組 VIN 接 5V |
-| MCP4728 | I2C 端子 SCL／SDA／GND（GPIO8／GPIO7，跟觸控共用） | **VCC 接 12 PIN 排針的 3V3**，見下面的注意事項 |
-
-板子上的 UART 端子（H8）跟燒錄口共用 UART0，不能拿來接高頻頭。
-
-## 編譯和燒錄
-
-ESP-IDF v5.5，目標預設就是 ESP32-P4：
+| | English | 繁體中文 | 简体中文 |
+|---|---|---|---|
+| Hardware, wiring, build | [Wheel controller](../../docs/en/wheel-controller.md) | [方向盤控制器](../../docs/zh-TW/wheel-controller.md) | [方向盘控制器](../../docs/zh-CN/wheel-controller.md) |
+| Driving and handling | [Driving](../../docs/en/driving.md) | [駕駛和操控](../../docs/zh-TW/driving.md) | [驾驶和操控](../../docs/zh-CN/driving.md) |
+| Radios | [Radios](../../docs/en/radios.md) | [發射方式](../../docs/zh-TW/radios.md) | [发射方式](../../docs/zh-CN/radios.md) |
+| Toy remote | [Converting a toy remote](../../docs/en/toy-remote.md) | [改裝玩具遙控器](../../docs/zh-TW/toy-remote.md) | [改装玩具遥控器](../../docs/zh-CN/toy-remote.md) |
+| 3D-printed parts | [Hardware](../../docs/en/hardware.md) | [硬體](../../docs/zh-TW/hardware.md) | [硬件](../../docs/zh-CN/hardware.md) |
+| Code, console, tools | [Development](../../docs/en/development.md) | [開發](../../docs/zh-TW/development.md) | [开发](../../docs/zh-CN/development.md) |
 
 ```bash
 . ~/esp/esp-idf/export.sh
 idf.py build
 idf.py -p /dev/cu.usbmodemXXXX flash
-```
-
-Log 在「USB TO UART」那個口，115200。
-
-## 駕駛
-
-MOZA R5 按鍵：
-
-| 按鍵 | 編號 | 功能 |
-|---|---|---|
-| Start | 36 | 點火／熄火（要在空檔、兩個踏板都放開才能點火） |
-| 右撥片 / 左撥片 | 14 / 13 | 升檔 / 降檔：R N 1 2 3 |
-| P | 32 | 急停 |
-| N | 19 | 四合一串口模式對頻 |
-
-踏板：右踏板（Z）是油門，左踏板（Rz）是剎車。
-
-駕駛模型（`control.c`）照真車：1／2／3 檔最大動力 33／67／100%，R 檔 40%，只有 R 檔踩油門才倒車，換方向要先停車。鬆油門會慢慢滑行，剎車只剎車。電調要用「前進／剎車／倒車」模式：進倒檔時程式會自動送「剎車 → 回中 → 倒車」。車速是估算的，車上沒有測速。
-
-安全規則全部在 `control.c`，任何發射方式都繞不過去：開機預設熄火；300 ms 收不到方向盤就回中並熄火，方向盤回來也要重新點火；急停一律回中。
-
-## 車輛和操控
-
-設定頁（螢幕右上 ⚙）第一個分頁「車輛」有 6 台車，點一下就換車。每台車各自記住發射方式和它的參數、最高車速、聲浪，以及「操控」頁的所有設定。語言、音量、力回饋強度、螢幕翻轉、ELRS 接法是控制器本身的設定，不跟車走。
-
-**操控設定跟發射方式無關。** 每種發射方式只負責把 −1…+1 換成自己的訊號（CRSF 通道、PPM、四合一通道、DAC 電壓），操控層在那之前，所有發射方式都要經過它：
-
-```
-方向：方向盤 → 轉角 → 中心柔和 → 方向死區 → 方向回正 → 舵量 → 反轉 → 發射方式
-油門：駕駛模型 → 油門死區 → 反轉 → 發射方式
-```
-
-- **方向盤轉角**（90–900°，預設 900°）：方向盤轉到這個角度，車輪就打死。再往外，力回饋用一個帶死區的彈簧頂住。回正彈簧按 900/轉角 加強（最多 2.5 倍）。越大轉向越穩，越小越靈敏。
-- **中心柔和**（0–80%）：expo，方向盤中間一段轉向更細，直線更穩。
-- **方向死區**（左、右各一個，最多 50%）：方向盤離開中間要轉一段車輪才動（舵機或轉向機構的死區）時用。設好以後方向盤一動車輪就跟著動。按「用方向盤調」，從中間慢慢往左轉，車輪剛開始動時按「存左」，往右同樣按「存右」。
-- **方向回正**：像原廠遙控器的方向微調。按「用方向盤調」，把方向盤轉到車剛好走直線的位置扶住，按「保存」。力回饋隨後把方向盤拉回正中。最多滿舵的 30%。
-- **舵量**（左、右各一個，滿舵的 30–100%）：打死的位置，避免舵機頂死，也讓左右對稱。按「用方向盤調」，打到車輪剛好到底時按「存左」「存右」。
-- **油門死區**（前進、倒車各一個，最多 80%）：電調中位附近不動的那一段。輸出 = 死區 + 油門 ×（1 − 死區），一踩車就動，檔位只限制最高速度；剎車不受影響。按「用油門調」，掛 1 檔慢慢踩，車剛開始動就按「保存」；掛 R 檔再存一次倒車的。調的時候踏板直接輸出（最多 90%）。
-- **反轉**：在發射設定頁，每種發射方式各自一組。
-
-調每一項的時候，那一項本身會暫時不生效，所以看到的是「還沒加上它」的位置。
-
-## 發射方式
-
-設定頁「發射設置」選，只有選中的那一種會發射。
-
-### ELRS
-
-- **Nano RX2400 當發射機（雙線，建議）**：設定頁選 ELRS 後，左下按鈕切到「接法：雙線 Nano」。Nano 要刷 ELRS 3.5 以上的接收機韌體，選「RX as TX」= internal（ESP8285 只支援 internal）：
-  1. Nano 只接 5V 和 GND，等 60 秒燈快閃，連「ExpressLRS RX」WiFi（密碼 `expresslrs`），打開 http://10.0.0.1。
-  2. 用韌體包裡的 flasher 產生發射機韌體（韌體包從 `https://artifactory.expresslrs.org/ExpressLRS/<commit>/firmware.zip` 下載，commit 查 `index.json`）：
-     `python3 flasher.pyz --dir firmware --target betafpv.rx_2400.nano --rx-as-tx internal --phrase <綁定短語>`
-  3. 在網頁的 UPDATE 上傳 `firmware.bin.gz`，型號不符的警告選強制刷入。
-  - 執行中 Nano 的燈不亮，是正常的。
-- **BETAFPV 高頻頭（單線）**：CRSF 腳接 GPIO28，撥碼 3、4 ON。
-- **車上用普通 ELRS 接收機當 2 路 PWM 接收機**：只有 GND／VCC／TX／RX 四個焊盤的 ESP8285 接收機（例如 BETAFPV Lite RX），不用重刷就能把 TX、RX 兩個焊盤改成 PWM：
-  1. 接收機只接 5V 和 GND，60 秒後連它的 WiFi，打開 `http://10.0.0.1/hardware.html`。
-  2. PWM 輸出腳位填 `1,3`（GPIO1 = TX 焊盤，GPIO3 = RX 焊盤），儲存、重啟。
-  3. 輸出 1（TX 焊盤）= CH1 轉向，輸出 2（RX 焊盤）= CH2 油門，50 Hz，失控保護 1500 µs。
-  4. 綁定短語跟發射機一致。
-  - 油門接 RX 焊盤：TX 焊盤開機時會吐開機訊息，舵機抖一下沒關係，電調可能誤判。
-
-### 四合一（MULTI）
-
-iRangeX IRX4+ 的 JR 母座從上到下：1 PPM → GPIO29，2 空，3 VIN → 5V，4 GND，5 S.Port（沒接）。
-
-| 模式 | 高頻頭旋鈕 | 對頻 |
-|---|---|---|
-| 四合一 串口 | 0 | 設定頁的「對頻」（或方向盤 N 鍵），30 秒 |
-| 四合一 PPM | 1～E（F 選組別） | 按住高頻頭對頻鍵上電 5 秒 |
-
-- 高頻頭**只在上電時讀旋鈕**：轉了旋鈕要斷電再上電。
-- 串口訊號不反相（反相時紅燈慢閃）。紅燈常亮 = 收到訊號，快閃 = 對頻中。
-- 已驗證：富斯 FS-GT2E 的車（MXO-Racing RXC42-AG 接收機，AFHDS 2A），兩種模式都能開。MXO 接收機的對頻順序是發射端先進入對頻，再長按接收機按鍵 2 秒。
-- 美嘉欣 Hyper Go（14303 等）沒有對應的協議，要換接收機。
-
-### 遙控器主板
-
-沒有標準接收機的玩具車，可以直接用它原裝的遙控器：把遙控器的方向、油門電位器換成 MCP4728 DAC 的輸出，P4 透過 I2C 控制電壓，遙控器照原來的方式發給車。已驗證：JC-02T-2.4G 遙控器（極客者 X2201）。
-
-接線，MCP4728 模組：
-
-| 焊孔 | 接到 |
-|---|---|
-| 下排 VCC | 12 PIN 排針的 **3V3** |
-| 下排 GND、SCL、SDA | I2C 端子的 GND、SCL、SDA |
-| 下排 LDAC | GND（不接輸出不會更新） |
-| 上排 VA | 方向電位器的中間腳（把電位器的中間腳剪斷，焊在留在板上的那一截） |
-| 上排 VB | 油門電位器的中間腳 |
-| 上排 VCC、GND | 遙控器電池盒的正、負極彈片（拿掉電池，遙控器跟 DAC 吃同一個 3V3，比例才一致） |
-
-- **I2C 端子的 VCC 是 5V，不要接。** MCP4728 模組上的 4.7k 上拉接在 VCC，接 5V 會把 I2C 拉到 5V，整條匯流排（包括觸控）會卡死。
-- 玩具遙控器的扳機和方向只轉電位器的一小段，**這一段以外的電壓晶片會讀錯**（例如油門給 2.1 V 反而前進）。所以輸出被限制在量到的兩端之間，停止位置也寫進 DAC 的 EEPROM，上電時 P4 還沒開機車也不會動。
-- 每台遙控器的三個點（兩端和停止點）在 `main/remote.c` 開頭，用 `tools/remote_tune.html` 量。死區不寫在這裡，是那台車的操控設定。
-- 只有選中「遙控器主板」的那台車會驅動它，換到別台車時遙控器停在停止位置，車開著也不會跟著動。
-
-## 力回饋（MOZA R5）
-
-標準 USB PID：彈簧（回正，隨車速加強）、阻尼、第三個帶死區的彈簧當方向盤轉角的頂點。強度在「駕駛設置」調，預設 40%。
-
-力回饋報告要從 HID 介面的中斷 OUT 端點發（R5 是 0x03）。從控制通道用 SET_REPORT 發，R5 回 OK 但不執行；ESP-IDF 的 usb_host_hid 又不支援 OUT 端點，所以 `components/usb_host_hid` 是它的一份拷貝，多了 `hid_host_device_send_output_report()`。效果還要打開方向並設成 90 度（X 軸），否則彈簧、阻尼都沒有力。
-
-## 儀表盤和聲浪
-
-- 兩套儀表盤（曜石、碳纖），左右滑動切換。靜態圖層用 `design/render/` 的 HTML 經 headless Chrome 渲染後嵌進韌體（`build_assets.py`）。
-- 聲浪從駕駛模型即時合成（`sound.c`），不用錄音：普通轎車、拉力賽車、寶馬 M4 三種，每台車各選一種。
-- 介面有簡體和繁體中文。字型用 `main/fonts/gen_fonts.sh` 產生，只收原始碼裡出現的字。
-
-## 除錯工具
-
-**串口指令**（log 那個口，115200，一行一條）：
-
-| 指令 | 作用 |
-|---|---|
-| `w <方向> <油門> <剎車>` | 模擬方向盤（−1…1、0…1、0…1），經過跟真方向盤一樣的駕駛模型。要每 50 ms 送一次。真方向盤在 0.5 秒內有資料時一律不理 |
-| `k start` / `k up` / `k down` / `k stop` | 點火／熄火、升檔、降檔、急停 |
-| `d <A> <B>` | 直接設 DAC 兩路的碼（0–4095），1.5 秒沒有新的就交回方向盤 |
-| `x` | 馬上交回方向盤 |
-| `name <名字>` | 改目前那台車的名字 |
-| `kind <0–3>` | 目前那台車的發射方式：0 ELRS、1 四合一串口、2 四合一 PPM、3 遙控器主板 |
-| `dead <左> <右> <前進> <倒車>` | 目前那台車的方向、油門死區（千分比） |
-
-**`tools/remote_tune.html`**：要用 Chrome 打開（Web Serial），從本機伺服器開：
-
-```bash
-python3 -m http.server 8765 --bind 127.0.0.1 --directory tools
-```
-
-然後打開 http://localhost:8765/remote_tune.html，「連接 P4」。
-- 「模擬駕駛」：拖方向盤、踩踏板、點火換檔（鍵盤 A/D、W/S、Enter、Q/E），走跟真方向盤一樣的路徑，顯示引擎、檔位、車速和輸出。
-- 「精調 DAC」：可以縮放的時間軸（⌘＋滾輪或雙指捏合），滾輪一格 ±1，記錄每個頻道的兩端和死區邊。
-- 用完按「斷開」，不然燒錄時串口被佔用。
-
-## 3D 列印外殼
-
-`enclosure/` 裡都是參數化的 Python 模型（manifold3d），成品在 `enclosure/out/`，`*_viewer.html` / `*_assembly.html` 是組裝預覽。
-
-| 模型 | 內容 |
-|---|---|
-| `p4_case.py` | P4 桌上外殼：螢幕托盤 `p4_tray.stl`、裝在 MOZA 底座上的支架 `p4_stand.stl`（內含喇叭槽和 Nano 位置）、四合一蓋板 `p4_multi_cover.stl` |
-| `minicar_cage.py`、`minicar_mount.py` | 小車上的接收機／電子倉 |
-| `vtx_mount.py`、`camera_pod.py`、`wifilink_mount.py` | 圖傳和攝像頭支架 |
-
-每個 `.py` 開頭說明列印方向和用到的螺絲；標 `MEASURE` 的參數要用卡尺量實物再改。共用的幾何和預覽函式在 `cad.py`。
-
-```bash
-python3 -m venv .venv && .venv/bin/pip install manifold3d numpy trimesh matplotlib
-.venv/bin/python enclosure/p4_case.py
 ```
