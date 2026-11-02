@@ -2,7 +2,7 @@
 
 [English](../en/desktop-app.md) | [繁體中文](../zh-TW/desktop-app.md) | **简体中文**
 
-电脑端用 Rust 写，界面是 egui 原生窗口。它把 CRSF 发给 ExpressLRS 高频头，并用 USB 网卡直接接收 OpenIPC 图传。可以用窗口里的滑条，或 Thrustmaster T300RS 方向盘操作。用[独立控制器](wheel-controller.md)的话，不需要它。
+电脑端用 Rust 写，界面是 egui 原生窗口。它把 CRSF 发给 ExpressLRS 高频头，并用 USB 网卡直接接收 OpenIPC 图传。可以用窗口里的滑条、MOZA R5 或 Thrustmaster T300RS 方向盘操作。用[独立控制器](wheel-controller.md)的话，不需要它。
 
 界面是深色仪表盘：
 
@@ -78,7 +78,7 @@ ffmpeg -re -f lavfi -i testsrc2=size=1280x720:rate=60 -c:v libx265 -preset ultra
 
 ## 方向盘
 
-接上 Thrustmaster T300RS（底座 `044f:b66e`）就自动接管方向和油门：油门踏板减刹车踏板就是油门量。程序直接读 HID 报告，不需要官方驱动。250 ms 没有新数据（拔线）时，控制回到窗口的滑条，油门照常回零。配置在 `[wheel]`。
+接上 MOZA R5／R5 Pro（底座 `346e:0004`）或 Thrustmaster T300RS（底座 `044f:b66e`）就自动接管方向和油门：油门踏板减刹车踏板就是油门量。程序直接读 HID 报告。两台都插着时用 MOZA。250 ms 没有新数据（拔线）时，控制回到窗口的滑条，油门照常回零。配置在 `[wheel]`。
 
 ## 排查命令
 

@@ -2,7 +2,7 @@
 
 **English** | [繁體中文](../zh-TW/desktop-app.md) | [简体中文](../zh-CN/desktop-app.md)
 
-The desktop app is the PC version, written in Rust with an egui window. It sends CRSF to an ExpressLRS module and shows OpenIPC FPV video, received directly from a USB Wi-Fi adapter. You can drive with the window's sliders or a Thrustmaster T300RS wheel. You don't need it for the [standalone controller](wheel-controller.md).
+The desktop app is the PC version, written in Rust with an egui window. It sends CRSF to an ExpressLRS module and shows OpenIPC FPV video, received directly from a USB Wi-Fi adapter. You can drive with the window's sliders, a MOZA R5 or a Thrustmaster T300RS wheel. You don't need it for the [standalone controller](wheel-controller.md).
 
 The window is a dark dashboard:
 
@@ -78,7 +78,7 @@ ffmpeg -re -f lavfi -i testsrc2=size=1280x720:rate=60 -c:v libx265 -preset ultra
 
 ## Wheel
 
-With a Thrustmaster T300RS plugged in (base `044f:b66e`), the wheel takes over steering and throttle. The throttle is the gas pedal minus the brake pedal. The app reads the HID reports directly, so no vendor driver is needed. After 250 ms without new data (unplugged), control goes back to the window's sliders and the throttle returns to zero. Settings are in `[wheel]`.
+With a MOZA R5 / R5 Pro (base `346e:0004`) or a Thrustmaster T300RS (base `044f:b66e`) plugged in, the wheel takes over steering and throttle. If both are plugged in, the MOZA is used. The throttle is the gas pedal minus the brake pedal. The app reads the HID reports directly. After 250 ms without new data (unplugged), control goes back to the window's sliders and the throttle returns to zero. Settings are in `[wheel]`.
 
 ## Diagnostic commands
 

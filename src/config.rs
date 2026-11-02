@@ -13,7 +13,7 @@ pub struct Config {
     pub wheel: WheelConfig,
 }
 
-/// 方向盘硬件输入（Thrustmaster T300RS 等裸 HID 设备）。
+/// 方向盘硬件输入（MOZA R5、Thrustmaster T300RS 等裸 HID 设备）。
 #[derive(Debug, Clone, Deserialize)]
 #[serde(default)]
 pub struct WheelConfig {
@@ -25,7 +25,7 @@ pub struct WheelConfig {
     pub throttle_invert: bool,
     /// 转向中位死区 0..0.1：细小抖动不算转向。
     pub steering_deadzone: f32,
-    /// "auto" 用 VID 044f 自动找，或写死 "T300RS" 等名字片段（暂只支持 auto）。
+    /// "auto" 优先找 MOZA R5（346e:0004），没有再找 T300RS（044f:b66e）。
     pub device: String,
 }
 

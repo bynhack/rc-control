@@ -100,7 +100,7 @@ src/
   video/decoder.rs  FFmpeg 低延迟解码，转成 RGBA
   video/mod.rs      收流线程、统计
   radio/mod.rs      内置图传：网卡选择、启动、断线重连、状态
-  wheel.rs          T300RS HID 读取、报告解析、--probe-wheel
+  wheel.rs          MOZA R5／T300RS HID 读取、报告解析、--probe-wheel
 native/             C++ 层：编译 Aviateur 的收包代码，提供 C 接口（rcwfb.h）
 third_party/aviateur  子模块，GPL-3.0
 vendor/             ffmpeg-sys-next 9.0.1 加 Windows D3D 空 stub（[patch.crates-io]）
@@ -122,9 +122,10 @@ RC_CONTROL_DEMO="0.45,0.85,high" RC_CONTROL_SNAPSHOT=/tmp/ui.bmp ./target/releas
 ### 电脑端编译备注
 
 - `vendor/ffmpeg-sys-next-9.0.1`：bindgen 解析 `<d3d11.h>` 时，会把 `amxintrin.h` 的 `__tile1024i_str` 带进来，它的 `packed` + `align` 组合 rustc 编译不过（E0587／E0080）。所以在 `hwcontext_stubs` 补了 d3d11／d3d12／d3d9／dxva2 空 stub，经 `[patch.crates-io]` 使用。
-- Aviateur 的两处 MinGW 修正，编译时打在复制出来的文件上，子模块保持不动（见 `native/CMakeLists.txt` 的 `patch_staged`）：
+- Aviateur 的几处 MinGW 修正，编译时打在复制出来的文件上，子模块保持不动（见 `native/CMakeLists.txt` 的 `patch_staged`）：
   - MinGW 已经有 `clock_gettime`（winpthreads），所以 `net_compat.h` 里的内联版本只在其他平台用。
   - `compat/getopt.h` 里 getopt 全局变量的 weak 定义，在 PE 链接器下会重复，MinGW 下不提供。
+  - `net_compat.h` 在 Windows 上把 `__attribute__` 清空，wfb-ng 头文件的 `packed` 就没了，而替代的写法只对 MSVC 恢复 1 字节对齐。MinGW 因此在 `wblock_hdr_t` 里补了空位（16 字节而不是 9），每一帧都解密失败。现在 `wifibroadcast.hpp` 在所有 Windows 编译器上都加 `#pragma pack`。
 - 一处对上游的修正，用同样的方式应用：Aviateur 停止链路后不会关闭 UDP 8001，同一个进程里再次启动会直接崩溃。复制出来的 `tx_frame.cpp` 会补上关闭。
 - `native/CMakeLists.txt` 的 `/utf-8` 只对 MSVC 生效；`build.rs` 为 MinGW 链接静态 libstdc++／gcc_eh 和 ws2_32。
 

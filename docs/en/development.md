@@ -100,7 +100,7 @@ src/
   video/decoder.rs  low-latency FFmpeg decoding to RGBA
   video/mod.rs      receive thread, statistics
   radio/mod.rs      built-in FPV receiver: adapter choice, start, reconnect, status
-  wheel.rs          T300RS HID reading, report parsing, --probe-wheel
+  wheel.rs          MOZA R5 / T300RS HID reading, report parsing, --probe-wheel
 native/             C++ layer: builds Aviateur's receive code, exposes a C API (rcwfb.h)
 third_party/aviateur  submodule, GPL-3.0
 vendor/             ffmpeg-sys-next 9.0.1 with Windows D3D stubs ([patch.crates-io])
@@ -122,9 +122,10 @@ RC_CONTROL_DEMO="0.45,0.85,high" RC_CONTROL_SNAPSHOT=/tmp/ui.bmp ./target/releas
 ### Desktop app build notes
 
 - `vendor/ffmpeg-sys-next-9.0.1`: when bindgen parses `<d3d11.h>`, it pulls in `__tile1024i_str` from `amxintrin.h`, whose `packed` + `align` combination rustc rejects (E0587 / E0080). Empty d3d11 / d3d12 / d3d9 / dxva2 stubs in `hwcontext_stubs` avoid it, used through `[patch.crates-io]`.
-- Two MinGW fixes for Aviateur are applied to copies of the files at build time, so the submodule stays unchanged (see `patch_staged` in `native/CMakeLists.txt`):
+- MinGW fixes for Aviateur are applied to copies of the files at build time, so the submodule stays unchanged (see `patch_staged` in `native/CMakeLists.txt`):
   - MinGW already has `clock_gettime` (winpthreads), so the inline one in `net_compat.h` is only used elsewhere.
   - The weak getopt globals in `compat/getopt.h` are defined twice by the PE linker, so they are left out on MinGW.
+  - `net_compat.h` blanks `__attribute__` on Windows, which drops `packed` from the wfb-ng headers, and the stand-in only restored 1-byte packing for MSVC. MinGW then padded `wblock_hdr_t` (16 bytes instead of 9) and every frame failed to decrypt. `wifibroadcast.hpp` now gets `#pragma pack` on every Windows compiler.
 - An upstream fix, applied the same way: Aviateur doesn't close UDP 8001 when the link stops, and starting it again in the same process crashes. The copied `tx_frame.cpp` gets the missing close.
 - `native/CMakeLists.txt` only passes `/utf-8` to MSVC. `build.rs` links static libstdc++ / gcc_eh and ws2_32 for MinGW.
 
