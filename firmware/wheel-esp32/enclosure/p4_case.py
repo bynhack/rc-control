@@ -7,8 +7,7 @@ Three parts:
                       side ports, TF card and the cable plugs. Prints flat,
                       back face on the bed.
   p4_stand.stl        one profile, extruded along the stand's width and
-                      printed standing on an end (the STL is placed so, with
-                      thin "mouse ears" at the bed corners to cut off), with
+                      printed standing on an end (the STL is placed so), with
                       3 mm walls: a shell (floor on the MOZA, back wall, top,
                       the slope the tray lies on, a front panel with the
                       speaker grille) and an inverted V under the slope that
@@ -20,8 +19,9 @@ Three parts:
                       The tray is held by four M2.5 x 10 countersunk screws
                       from inside the tray (before the board goes in), nuts
                       in diamond pads under the slope. The box speaker faces
-                      forward behind the grille (four M2.5 x 8 countersunk,
-                      nuts behind its tabs). Two M3 x 6 socket heads hold the
+                      forward behind the grille, slid in from the stand's open
+                      end into a slot (a stop at the far end, an M2.5 x 8
+                      self-tapping screw and washer at the near one). Two M3 x 6 socket heads hold the
                       floor to the MOZA wheel base's two M3 holes (70 apart),
                       turned with a hex key through the slope's windows.
   p4_multi_cover.stl  cover over a window in the stand's back wall. The MULTI
@@ -311,17 +311,28 @@ CV_USB_R = CV_POSTS[1][0] - 2.7 / 2 + 2.0  # USB's right side: the board's right
 CV_LED_DU = (CV_WIN[0] + CV_WIN[2]) / 2 - sum(MB_LED_U) / 2  # the two lights centred across the cover too
 NANO = (12.0, 20.0)  # MEASURE: ELRS Nano RX footprint (across, along the stand), taped down inside the V
 
-# Speaker (70 x 31 box speaker, 2-pin PH2.0) facing forward under the screen,
-# behind the grille in the front panel, like a sound bar.
-SPK_L, SPK_W, SPK_D = 70.0, 31.0, 16.65  # flange outline (along the stand, up), front to back
-SPK_FLANGE = 1.7
-SPK_TAB = (9.5, 9.3)  # corner tabs: flange only, the body is cut back there
-SPK_HOLES = (SPK_W / 2 - SPK_TAB[0] / 2, SPK_L / 2 - SPK_TAB[1] / 2)  # MEASURE: hole centres, from the speaker's middle (up, along)
+# Speaker (100 x 45 x 21 two-driver box, 2-pin PH2.0) facing forward under the
+# screen, behind the grille in the front panel, like a sound bar. It slides in
+# from the stand's open end at z = 0 into a slot: the panel in front, a ledge
+# under its front edge, a shelf over it (the panel's top turned back), and a
+# bar behind it off the V's leg, at its middle height: its back slopes in
+# towards the top and bottom edges, so only the middle is a full SPK_D deep. A stop at the far end (the end on the bed);
+# at the near end an M2.5 x 8 self-tapping screw with a washer in the ledge's
+# end face. Its ears (rings in the corner notches) are not used.
+SPK_L, SPK_W, SPK_D = 100.0, 45.0, 21.0  # along the stand, up, front to back
+SPK_FIT = 0.3
 PANEL_TOP = 10.5  # just under the tray's bottom-back edge (LIFT)
-SPK_LIFT = 2.5  # the speaker's bottom edge over the floor, clear of the corner's fillet
-FOOT_H = ST_T + SPK_LIFT + SPK_W - PANEL_TOP + 0.5  # base line this high over the MOZA
-spk_v = -FOOT_H + ST_T + SPK_LIFT + SPK_W / 2  # speaker's middle
-floor_v = -FOOT_H + ST_T  # the floor's top
+SPK_LIFT = 3.6  # the speaker's bottom over the floor: the M3 heads (3 high) pass under its back
+SHELF = 7.0  # the shelf over the speaker and the ledge under it reach this far back from the panel
+BAR_H = 8.0  # the bar behind it, this tall, centred on it
+spk_top = PANEL_TOP - ST_T - SPK_FIT
+spk_v = spk_top - SPK_W / 2  # speaker's middle
+floor_v = spk_top - SPK_W - SPK_LIFT  # the floor's top
+FOOT_H = ST_T - floor_v  # base line this high over the MOZA
+spk_back = FRONT_U + ST_T + SPK_D
+SPK_Z0 = 1.0  # its near end; the washer's under it
+STOP_PILOT = 2.2  # M2.5 self-tapping, along z into the ledge's end
+stop_uv = (FRONT_U + ST_T + SHELF / 2, floor_v + 1.4)
 # Fixing to the top of the MOZA wheel base: its two M3 holes, 70 apart across
 # it, under the bay. M3 x 6 socket heads, put in through the bay's open ends,
 # turned with a 2.5 hex key through the slope's windows (before the tray).
@@ -437,8 +448,15 @@ def profile():
     bay = CrossSection([ccw([(FRONT_U + ST_T, floor_v), (leg_f, floor_v), uv(slope_at(leg_f, ST_T), ST_T), uv(s0, ST_T), uv(s0, 0),
                              uv(s0, -10), (FRONT_U - 10, PANEL_TOP), (FRONT_U + ST_T, PANEL_TOP)])])
     prof = hull - bay - rear - inner
+    # The speaker's slot: shelf, ledge, and the bar behind its middle off the leg.
+    f0, b0 = FRONT_U + ST_T, spk_back + SPK_FIT
+    spk_bot = spk_top - SPK_W
+    rect = lambda u0, v0, u1, v1: CrossSection.square([u1 - u0, v1 - v0]).translate([u0, v0])
+    prof += rect(FRONT_U, PANEL_TOP - ST_T, f0 + SHELF, PANEL_TOP) + rect(f0 - 0.5, floor_v - 0.5, f0 + SHELF, spk_bot)
+    prof += rect(b0, spk_v - BAR_H / 2, leg_f + 0.5, spk_v + BAR_H / 2)
     prof = prof.offset(2.0, JoinType.Round).offset(-2.0, JoinType.Round)  # fillets in every inside corner
-    return prof.offset(-EDGE, JoinType.Round).offset(EDGE, JoinType.Round)  # and the outside edges eased
+    prof = prof.offset(-EDGE, JoinType.Round).offset(EDGE, JoinType.Round)  # and the outside edges eased
+    return prof - rect(f0, spk_bot, b0, spk_top + SPK_FIT)  # but the slot's corners square
 
 
 def cut_through(outline, p0, d, n, t, z0=0.0):
@@ -471,18 +489,10 @@ def row(a0, a1, size=26.0, centres=(20.0, 55.0, 90.0)):
     return CrossSection.batch_boolean([pointed(c - size / 2, c + size / 2, a0, a1) for c in centres], OpType.Add)
 
 
-def speaker():
-    """Stand-in, facing forward: flange against the panel's back."""
-    zc, f0 = STAND_W / 2, FRONT_U + ST_T
-    v0, v1 = spk_v - SPK_W / 2, spk_v + SPK_W / 2
-    out = box(f0, v0, zc - SPK_L / 2, f0 + SPK_FLANGE, v1, zc + SPK_L / 2)
-    tw, tl = SPK_TAB
-    out += box(f0, v0, zc - SPK_L / 2 + tl, f0 + SPK_D, v1, zc + SPK_L / 2 - tl)
-    out += box(f0, v0 + tw, zc - 33.0, f0 + SPK_D, v1 - tw, zc + 33.0)
-    for sv in (-1, 1):
-        for sz in (-1, 1):
-            out -= Manifold.cylinder(4, 1.4).rotate([0, 90, 0]).translate([f0 - 1, spk_v + sv * SPK_HOLES[0], zc + sz * SPK_HOLES[1]])
-    return out
+def speaker(z0=SPK_Z0):
+    """Stand-in, facing forward against the panel's back, its near end at z0."""
+    f0 = FRONT_U + ST_T
+    return box(f0, spk_top - SPK_W, z0, f0 + SPK_D, spk_top, z0 + SPK_L)
 
 
 def _wall_frame(p0, d, n):
@@ -530,15 +540,15 @@ def stand():
     for z in MOZA_ZS:
         out -= _teardrop(M3_R, ST_T + 2).rotate([-90, 0, 0]).translate([MOZA_U, -FOOT_H - 1, z])
 
-    # Front panel: grille and the speaker's four M2.5 countersunk holes.
-    grille = CrossSection.batch_boolean([pointed(zc - 27.0, zc + 27.0, spk_v + dv - 1.1, spk_v + dv + 1.1)
-                                         for dv in (-10.0, -6.0, -2.0, 2.0, 6.0, 10.0)], OpType.Add)
+    # Front panel: the grille over the speaker's face.
+    gz = SPK_Z0 + SPK_L / 2
+    grille = CrossSection.batch_boolean([pointed(gz - 42.0, gz + 42.0, spk_v + dv - 1.1, spk_v + dv + 1.1)
+                                         for dv in np.arange(-18.0, 18.1, 4.0)], OpType.Add)
     out -= cut_through(grille, (FRONT_U, 0), (0, 1), (1, 0), ST_T)
-    for sv in (-1, 1):
-        for sz in (-1, 1):
-            at = [FRONT_U - 0.01, spk_v + sv * SPK_HOLES[0], zc + sz * SPK_HOLES[1]]
-            out -= Manifold.cylinder(ST_T + 2, M25_R).rotate([0, 90, 0]).translate([FRONT_U - 1, at[1], at[2]])
-            out -= Manifold.cylinder(1.0, 2.4, 1.4).rotate([0, 90, 0]).translate(at)
+    # The speaker's stop at the far end (on the bed), the screw's pilot at the near end.
+    f0 = FRONT_U + ST_T
+    out += box(f0 - 0.5, floor_v - 0.5, SPK_Z0 + SPK_L + SPK_FIT, spk_back, spk_top - SPK_W + 12.0, STAND_W)
+    out -= cyl(*stop_uv, -1, 8.0, STOP_PILOT / 2)
 
     # Back wall: the MULTI window, the cover's M2.5 holes and nut pockets.
     wall_in = COVER_T + ST_T + PAD
@@ -558,17 +568,6 @@ def stand():
         out -= along(Manifold.cylinder(ST_T + PAD + 2, M25_R), -1.0)
         out -= along(Manifold.cylinder(NUT_T + 0.4 + 1, NUT_R, circular_segments=6), ST_T + PAD - NUT_T - 0.4)
     return out
-
-
-EAR_R, EAR_T = 9.0, 0.4  # "mouse ears" on the bed against warping: discs, two layers thick, cut off after
-
-
-def ears():
-    """Thin discs at the outer corners of the end that goes on the bed (z = STAND_W)."""
-    s0, s1 = SLOPE_S
-    corners = [(FRONT_U, -FOOT_H), (back_u, -FOOT_H), (back_u, top_v), uv(s1, 0), uv(s0, 0), (FRONT_U, PANEL_TOP)]
-    return Manifold.batch_boolean([Manifold.cylinder(EAR_T, EAR_R, circular_segments=48).translate([u, v, STAND_W - EAR_T])
-                                   for u, v in corners], OpType.Add)
 
 
 def _pad(p0, d, n, z):
@@ -753,7 +752,7 @@ def assembly_parts():
         ("cscrews", "面板螺絲", cover_w(screws_c), 0xe8e8e8, [(8, [0, 25, 0])]),
         ("sma", "SMA＋天線", world(sma() + antenna, "stand"), 0x1d2228, [(9, [0, 0, 45])]),
         ("nano", "ELRS Nano", world(nano(), "stand"), 0x3a5d8f, [(10, [-80, 0, 0])]),
-        ("speaker", "喇叭", world(speaker(), "stand"), 0x2a2d33, [(11, [0, 60, 0])]),
+        ("speaker", "喇叭", world(speaker(), "stand"), 0x2a2d33, [(11, [-130, 0, 0])]),
         ("plugs", "插頭（12-pin、Type-C、MULTI 排針）", world(pin12 + usbc, "tray") + cover_w(multi(plugs=True) - multi()),
          0xd9732b, [(12, n(25))]),
     ]
@@ -796,6 +795,7 @@ def main():
              "stand x speaker": (st ^ speaker()).volume(), "stand x M3 screws": (st ^ moza_screws()).volume(),
              "stand x Nano": (st ^ nano()).volume(), "speaker x M3 screws": (speaker() ^ moza_screws()).volume(),
              "stand x 12-pin plugs": (st_w ^ pin12_plugs(20.0).transform(TRAY_TO_WORLD)).volume(),
+"speaker's way in": (st ^ (speaker(-120.0) + speaker()).hull()).volume(),
              "speaker x 12-pin plugs": (speaker().transform(STAND_TO_WORLD) ^ pin12_plugs(20.0).transform(TRAY_TO_WORLD)).volume()}
     for k, v in clash.items():
         print(f"{k}: {v:.3f} mm3")
@@ -805,7 +805,7 @@ def main():
         sys.exit("something is below the desk")
 
     to_trimesh(t).export(os.path.join(OUT, "p4_tray.stl"))
-    to_trimesh((st + ears()).rotate([180, 0, 0])).export(os.path.join(OUT, "p4_stand.stl"))  # standing on its z = STAND_W end, with ears
+    to_trimesh(st.rotate([180, 0, 0])).export(os.path.join(OUT, "p4_stand.stl"))  # standing on its z = STAND_W end
     to_trimesh(cv).export(os.path.join(OUT, "p4_multi_cover.stl"))
     case, part, dark = (0.62, 0.68, 0.76), (0.40, 0.46, 0.55), (0.15, 0.17, 0.2)
     preview(
