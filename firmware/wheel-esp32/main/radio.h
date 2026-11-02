@@ -2,14 +2,18 @@
 //
 // ELRS: the CRSF module (crsf.c). MULTI: the 4-in-1 module (multi.c), either
 // over its serial protocol (the protocol is picked here) or as plain PPM
-// (the protocol is picked on the module's own dial). Only the selected one
+// (the protocol is picked on the module's own dial). REMOTE: a toy car's own
+// remote, its pots replaced by a DAC (remote.c). Only the selected one
 // transmits.
 #pragma once
 
 #include <stdbool.h>
 #include <stdint.h>
 
-typedef enum { RADIO_ELRS, RADIO_MULTI_SERIAL, RADIO_MULTI_PPM, RADIO_KINDS } radio_kind_t;
+typedef enum { RADIO_ELRS, RADIO_MULTI_SERIAL, RADIO_MULTI_PPM, RADIO_REMOTE, RADIO_KINDS } radio_kind_t;
+// The kinds with a slot in rev_steer/rev_thr; REMOTE came later and keeps
+// its own in rev_remote, so the saved layout stays as it was.
+#define RADIO_REV_KINDS 3
 
 // A MULTI protocol as the serial frame names it (Multiprotocol.h).
 typedef struct {
@@ -27,9 +31,10 @@ typedef struct {
     uint8_t proto;  // index into MULTI_PROTOS
     uint8_t rx_num; // 0..15, one per bound model
     int8_t option;
-    // Per kind: the ELRS car and the MULTI cars are wired differently.
-    bool rev_steer[RADIO_KINDS];
-    bool rev_thr[RADIO_KINDS];
+    // Per kind: the ELRS car and the MULTI cars are wired differently. Read
+    // and flip them with radio_rev() / radio_rev_flip().
+    bool rev_steer[RADIO_REV_KINDS];
+    bool rev_thr[RADIO_REV_KINDS];
     // Steering trim, like the knob on a stock radio, for a car that doesn't
     // run straight with the wheel centred: thousandths of full lock, + = right.
     int16_t trim;
@@ -39,19 +44,29 @@ typedef struct {
     // Steering end points, thousandths of full lock: [0] left, [1] right,
     // so the servo stops where the car's steering does.
     uint16_t steer_max[2];
-    // Where the ESC starts to move the car, thousandths of full throttle:
-    // [0] forward, [1] reverse. The pedal's travel starts there.
+    // The throttle's dead band: where the ESC starts to move the car,
+    // thousandths of full throttle, [0] forward, [1] reverse. The pedal's
+    // travel starts there.
     uint16_t thr_start[2];
     // Softer steering around the centre, percent (0 = linear).
     uint8_t expo;
-    uint8_t reserved[7];
+    bool rev_remote[2]; // REMOTE's reverse: [0] steering, [1] throttle
+    // The steering's dead band: where the wheels start to turn, thousandths
+    // of full lock, [0] left, [1] right. The wheel's travel starts there.
+    uint16_t steer_start[2];
+    uint8_t reserved[2];
 } radio_config_t;
+
+// Whether the selected kind's steering (thr false) or throttle is reversed.
+bool radio_rev(const radio_config_t *c, bool thr);
+void radio_rev_flip(radio_config_t *c, bool thr);
 
 #define TRIM_MAX 300
 #define WHEEL_DEG 900
 #define STEER_DEG_MIN 90
 #define STEER_MAX_MIN 300
-#define THR_START_MAX 400
+#define THR_START_MAX 800
+#define STEER_START_MAX 500
 #define EXPO_MAX 80
 
 // Loads the saved cars (or the defaults). Call before the radios start.
@@ -61,23 +76,29 @@ radio_config_t radio_config(void);
 // Applies to the active car and saves.
 void radio_set(const radio_config_t *c);
 const char *radio_kind_name(radio_kind_t k);
-// The wheel's -1..+1 (WHEEL_DEG) as the car's steering before trim and end
-// points: scaled to steer_deg, then expo.
+// The handling, the same for every radio kind: each kind only turns the -1..1
+// these return into its own signal (CRSF channels, PPM, MULTI channels, DAC
+// codes), so every way of driving a car goes through it.
+//
+// Steering: range (steer_deg) -> expo -> dead band -> trim -> end points ->
+// reverse. Throttle: dead band -> reverse; braking is passed as it is.
+//
+// The wheel's -1..+1 (WHEEL_DEG) scaled to steer_deg, then expo.
 float radio_steer_shape(const radio_config_t *c, float wheel);
-// The steering the car gets for the wheel: shaped, trimmed, held to the end
-// points, then reversed if this output is wired that way.
+// Shaped, then past the dead band: the steering before trim and end points.
+float radio_steer_base(const radio_config_t *c, float wheel);
+// The steering the car gets for the wheel.
 float radio_steering(const radio_config_t *c, float wheel);
-// The throttle the ESC gets for control_output(): forward and reverse start
-// at thr_start, braking is passed as it is; reversed if wired that way.
+// The throttle the car gets for control_output().
 float radio_throttle(const radio_config_t *c, float throttle, bool reverse);
 
 // Setting a handling value with the wheel or pedals on the dashboard. While
 // one is set, the step it sets is left out, so the driver finds the right
 // spot and saves it: CAL_TRIM leaves out the trim, CAL_ENDS the end points,
-// CAL_THROTTLE the start points (and control.c then sends the gas pedal
-// straight, up to CAL_THROTTLE_MAX).
-typedef enum { CAL_NONE, CAL_TRIM, CAL_ENDS, CAL_THROTTLE } radio_cal_t;
-#define CAL_THROTTLE_MAX 0.5f
+// CAL_THROTTLE the throttle's dead band (and control.c then sends the gas
+// pedal straight, up to CAL_THROTTLE_MAX), CAL_STEER_START the steering's.
+typedef enum { CAL_NONE, CAL_TRIM, CAL_ENDS, CAL_THROTTLE, CAL_STEER_START } radio_cal_t;
+#define CAL_THROTTLE_MAX 0.9f
 void radio_cal_set(radio_cal_t cal);
 radio_cal_t radio_cal_get(void);
 

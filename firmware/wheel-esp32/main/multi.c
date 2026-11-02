@@ -183,7 +183,7 @@ static void sender_task(void *arg) {
             send_ppm(steer, thr);
             period = pdMS_TO_TICKS(PPM_FRAME_US / 1000);
         }
-        if (c.kind != RADIO_ELRS) {
+        if (c.kind == RADIO_MULTI_SERIAL || c.kind == RADIO_MULTI_PPM) {
             portENTER_CRITICAL(&s_lock);
             s_frames++;
             portEXIT_CRITICAL(&s_lock);

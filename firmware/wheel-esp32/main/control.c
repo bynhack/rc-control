@@ -40,6 +40,7 @@ static control_output_t s_out;
 static rev_state_t s_rev = REV_IDLE;
 static int64_t s_rev_at;
 static int64_t s_last_input_us = -1;
+static int64_t s_last_wheel_us = -1; // real wheel samples only
 static int64_t s_last_tick_us = -1;
 static int64_t s_timeout_us;
 static const char *s_off_reason = "BOOT";
@@ -179,7 +180,21 @@ void control_input(float steering, float gas, float brake, int64_t now_us) {
     s_gas = clamp(gas, 0.0f, 1.0f);
     s_brake = clamp(brake, 0.0f, 1.0f);
     s_last_input_us = now_us;
+    s_last_wheel_us = now_us;
     portEXIT_CRITICAL(&s_lock);
+}
+
+bool control_input_sim(float steering, float gas, float brake, int64_t now_us) {
+    portENTER_CRITICAL(&s_lock);
+    bool ok = s_last_wheel_us < 0 || now_us - s_last_wheel_us > (int64_t)SIM_YIELD_MS * 1000;
+    if (ok) {
+        s_steering = clamp(steering, -1.0f, 1.0f);
+        s_gas = clamp(gas, 0.0f, 1.0f);
+        s_brake = clamp(brake, 0.0f, 1.0f);
+        s_last_input_us = now_us;
+    }
+    portEXIT_CRITICAL(&s_lock);
+    return ok;
 }
 
 const char *control_ignition_on(int64_t now_us) {

@@ -1,7 +1,7 @@
 /*******************************************************************************
  * Size: 30 px
  * Bpp: 4
- * Opts: --font /private/tmp/claude-501/-Users-brian-Documents-Project-rc-control/04f0bf59-27e5-4eea-924b-37370234cefd/scratchpad/fontdl/Saira-Light.ttf --symbols RN123 --size 30 --bpp 4 --no-compress --format lvgl --lv-include lvgl.h --lv-font-name saira_l_30 -o saira_l_30.c
+ * Opts: --font <fonts>/Saira-Light.ttf --symbols RN123 --size 30 --bpp 4 --no-compress --format lvgl --lv-include lvgl.h --lv-font-name saira_l_30 -o saira_l_30.c
  ******************************************************************************/
 
 #ifdef LV_LVGL_H_INCLUDE_SIMPLE

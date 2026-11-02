@@ -3,7 +3,7 @@ set(embed "")
 if(IDF_TARGET STREQUAL "esp32p4")
     # The 7" dashboard: its fonts (fonts/gen_fonts.sh) and images
     # (design/render/build_assets.py).
-    list(APPEND srcs "display_p4.c" "dash_p4.c" "sound.c"
+    list(APPEND srcs "display_p4.c" "dash_p4.c" "sound.c" "remote.c"
          "fonts/cjk_14.c" "fonts/cjk_16.c" "fonts/cjk_20.c" "fonts/cjk_24.c" "fonts/cjk_32.c"
          "fonts/saira_thin_132.c" "fonts/saira_xl_30.c" "fonts/saira_l_30.c" "fonts/saira_l_15.c"
          "fonts/barlow_58.c" "fonts/barlow_64.c" "fonts/barlow_28.c")

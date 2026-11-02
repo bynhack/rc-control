@@ -71,6 +71,9 @@ typedef struct {
 
 _Static_assert(sizeof(car_v3_t) == 36 && sizeof(garage_v3_t) == 220, "old garage layout");
 _Static_assert(offsetof(radio_config_t, steer_deg) == 16, "new fields after the old ones");
+// Later fields went into what was reserved (zero in older blobs, so off).
+_Static_assert(sizeof(radio_config_t) == 36, "radio_config_t as saved in garage version 4");
+_Static_assert(offsetof(radio_config_t, steer_start) == 30, "steer_start in the old reserved bytes");
 
 static portMUX_TYPE s_lock = portMUX_INITIALIZER_UNLOCKED;
 static garage_t s_garage;
@@ -98,6 +101,9 @@ static void fix_handling(radio_config_t *r) {
         }
         if (r->thr_start[i] > THR_START_MAX) {
             r->thr_start[i] = 0;
+        }
+        if (r->steer_start[i] > STEER_START_MAX) {
+            r->steer_start[i] = 0;
         }
     }
     if (r->expo > EXPO_MAX) {
@@ -288,26 +294,58 @@ float radio_steer_shape(const radio_config_t *c, float wheel) {
     return s * (1.0f - e) + e * s * s * s;
 }
 
+// Past a dead band of start (0..1): any input off zero starts at its edge.
+static float past_dead_band(float v, float start) {
+    if (v == 0.0f) {
+        return 0.0f;
+    }
+    return copysignf(start + fabsf(v) * (1.0f - start), v);
+}
+
+float radio_steer_base(const radio_config_t *c, float wheel) {
+    float s = radio_steer_shape(c, wheel);
+    if (s_cal == CAL_STEER_START) {
+        return s;
+    }
+    return clampf(past_dead_band(s, c->steer_start[s < 0.0f ? 0 : 1] / 1000.0f));
+}
+
 float radio_steering(const radio_config_t *c, float wheel) {
     radio_cal_t cal = s_cal;
-    float s = radio_steer_shape(c, wheel);
+    float s = radio_steer_base(c, wheel);
     if (cal != CAL_TRIM) {
         s = clampf(s + c->trim / 1000.0f);
     }
     if (cal != CAL_ENDS) {
         s *= c->steer_max[s < 0.0f ? 0 : 1] / 1000.0f;
     }
-    return c->rev_steer[c->kind] ? -s : s;
+    return radio_rev(c, false) ? -s : s;
 }
 
 float radio_throttle(const radio_config_t *c, float throttle, bool reverse) {
     float t = throttle;
     if (s_cal != CAL_THROTTLE && (t > 0.0f || reverse)) {
-        float start = c->thr_start[t > 0.0f ? 0 : 1] / 1000.0f;
-        t = copysignf(start + fabsf(t) * (1.0f - start), t);
+        t = past_dead_band(t, c->thr_start[t > 0.0f ? 0 : 1] / 1000.0f);
     }
     t = clampf(t);
-    return c->rev_thr[c->kind] ? -t : t;
+    return radio_rev(c, true) ? -t : t;
+}
+
+static bool *rev_slot(radio_config_t *c, bool thr) {
+    if (c->kind == RADIO_REMOTE) {
+        return &c->rev_remote[thr];
+    }
+    return thr ? &c->rev_thr[c->kind] : &c->rev_steer[c->kind];
+}
+
+bool radio_rev(const radio_config_t *c, bool thr) {
+    radio_config_t copy = *c;
+    return *rev_slot(&copy, thr);
+}
+
+void radio_rev_flip(radio_config_t *c, bool thr) {
+    bool *r = rev_slot(c, thr);
+    *r = !*r;
 }
 
 const char *radio_kind_name(radio_kind_t k) {
@@ -318,6 +356,8 @@ const char *radio_kind_name(radio_kind_t k) {
             return "MULTI";
         case RADIO_MULTI_PPM:
             return "MULTI PPM";
+        case RADIO_REMOTE:
+            return "REMOTE";
         default:
             return "?";
     }

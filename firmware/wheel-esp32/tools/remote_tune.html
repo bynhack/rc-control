@@ -1,0 +1,524 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>搖控器調試</title>
+<style>
+  :root {
+    --bg: #f5f4ef; --card: #ffffff; --ink: #1d1d1b; --muted: #6b6a64; --line: #dedcd3; --soft: #efede6;
+    --accent: #c4532d; --ok: #2f7d4f; --warn: #b3261e; --band: rgba(196, 83, 45, .12); --valid: rgba(47, 125, 79, .10);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #171715; --card: #22221f; --ink: #ecebe6; --muted: #9a998f; --line: #3a3934; --soft: #2b2b27;
+            --accent: #e0774f; --ok: #5fb47f; --warn: #ef6b61; --band: rgba(224, 119, 79, .16); --valid: rgba(95, 180, 127, .12); }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 15px/1.5 -apple-system, "PingFang TC", "Noto Sans TC", sans-serif; }
+  main { max-width: 860px; margin: 0 auto; padding: 24px 16px 48px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 18px; }
+  .bar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 16px; }
+  button { font: inherit; border: 1px solid var(--line); background: var(--card); color: var(--ink);
+           padding: 7px 12px; border-radius: 8px; cursor: pointer; }
+  button:hover { border-color: var(--muted); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.stop { background: var(--warn); border-color: var(--warn); color: #fff; font-weight: 600; }
+  button:disabled { opacity: .45; cursor: default; }
+  .status { color: var(--muted); }
+  .status.on { color: var(--ok); }
+  .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin-bottom: 14px; }
+  .tabs button { border: 0; border-bottom: 2px solid transparent; border-radius: 0; background: none;
+                 padding: 8px 14px; color: var(--muted); }
+  .tabs button.on { color: var(--ink); border-bottom-color: var(--accent); font-weight: 600; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin-bottom: 14px; }
+  .head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; }
+  .head h2 { font-size: 17px; margin: 0; }
+  .val { font-variant-numeric: tabular-nums; font-size: 22px; font-weight: 600; }
+  .val small { font-size: 14px; color: var(--muted); font-weight: 400; margin-left: 6px; }
+  .row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; align-items: center; }
+  .row button { padding: 5px 10px; }
+  .row .gap { flex: 1; }
+  canvas.axis { width: 100%; height: 120px; display: block; border-radius: 8px; background: var(--soft);
+                cursor: ew-resize; touch-action: none; }
+  .marks { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 12px; }
+  .mark { border: 1px dashed var(--line); border-radius: 8px; padding: 8px; text-align: center; }
+  .mark b { display: block; font-variant-numeric: tabular-nums; font-size: 15px; margin: 2px 0 6px; cursor: pointer; }
+  .mark span { color: var(--muted); font-size: 13px; }
+  .hint { color: var(--muted); font-size: 13px; margin: 8px 0 0; }
+  pre { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px;
+        font: 12px/1.45 ui-monospace, Menlo, monospace; max-height: 160px; overflow: auto; margin: 0;
+        white-space: pre-wrap; word-break: break-all; }
+  #summary { font: 13px/1.6 ui-monospace, Menlo, monospace; white-space: pre; }
+
+  /* simulator */
+  .sim { display: grid; grid-template-columns: 1fr auto; gap: 16px; align-items: center; }
+  .wheel-box { display: flex; flex-direction: column; align-items: center; gap: 6px; touch-action: none; cursor: grab; user-select: none; }
+  .wheel-box svg { width: min(300px, 70vw); height: auto; }
+  .pedals { display: flex; gap: 14px; }
+  .pedal { display: flex; flex-direction: column; align-items: center; gap: 6px; user-select: none; }
+  .pedal .track { width: 54px; height: 220px; border-radius: 10px; background: var(--soft); border: 1px solid var(--line);
+                  position: relative; overflow: hidden; touch-action: none; cursor: ns-resize; }
+  .pedal .fill { position: absolute; left: 0; right: 0; bottom: 0; background: var(--accent); }
+  .pedal.brake .fill { background: var(--warn); }
+  .pedal span { font-size: 13px; color: var(--muted); }
+  .pedal b { font-variant-numeric: tabular-nums; }
+  .dash { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 14px; }
+  .dash div { background: var(--soft); border-radius: 8px; padding: 8px 10px; }
+  .dash span { display: block; font-size: 12px; color: var(--muted); }
+  .dash b { font-size: 20px; font-variant-numeric: tabular-nums; }
+  .gear b { font-size: 28px; }
+  .notice { color: var(--warn); min-height: 1.5em; margin-top: 8px; }
+  .keys { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 14px; }
+  label.check { display: inline-flex; gap: 6px; align-items: center; color: var(--muted); font-size: 14px; }
+  @media (max-width: 640px) {
+    .sim { grid-template-columns: 1fr; }
+    .pedals { justify-content: center; }
+    .dash, .marks { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>搖控器調試</h1>
+  <p class="sub">P4 → MCP4728 → 搖控器電位器。測試時讓輪子懸空。</p>
+
+  <div class="bar">
+    <button class="primary" id="connect">連接 P4</button>
+    <button class="stop" id="stop" disabled>急停</button>
+    <span class="status" id="status">未連接</span>
+  </div>
+
+  <div class="tabs">
+    <button data-tab="sim" class="on">模擬駕駛</button>
+    <button data-tab="dac">精調 DAC</button>
+  </div>
+
+  <!-- simulated wheel: through the P4's driving model, like the MOZA -->
+  <section id="tab-sim">
+    <div class="card">
+      <div class="sim">
+        <div class="wheel-box" id="wheel">
+          <svg viewBox="-110 -110 220 220" aria-label="方向盤">
+            <g id="wheel-rot">
+              <circle r="96" fill="none" stroke="currentColor" stroke-width="14" opacity=".85"/>
+              <circle r="22" fill="currentColor" opacity=".85"/>
+              <path d="M -90 8 L -22 8 L -22 -8 L -90 -8 Z M 90 8 L 22 8 L 22 -8 L 90 -8 Z M -8 22 L 8 22 L 8 92 L -8 92 Z"
+                    fill="currentColor" opacity=".85"/>
+              <rect x="-5" y="-110" width="10" height="20" rx="2" fill="var(--accent)"/>
+            </g>
+          </svg>
+          <div class="val" id="steer-val">0°</div>
+        </div>
+        <div class="pedals">
+          <div class="pedal brake"><span>刹車 S</span><div class="track" id="brake"><div class="fill"></div></div><b id="brake-val">0%</b></div>
+          <div class="pedal gas"><span>油門 W</span><div class="track" id="gas"><div class="fill"></div></div><b id="gas-val">0%</b></div>
+        </div>
+      </div>
+      <div class="keys">
+        <button id="k-start">發動 / 熄火（Enter）</button>
+        <button id="k-down">降檔（Q）</button>
+        <button id="k-up">升檔（E）</button>
+        <label class="check"><input type="checkbox" id="spring" checked> 放開自動回中</label>
+      </div>
+      <div class="dash">
+        <div><span>引擎</span><b id="d-engine">—</b></div>
+        <div class="gear"><span>檔位</span><b id="d-gear">—</b></div>
+        <div><span>模型車速</span><b id="d-speed">—</b></div>
+        <div><span>DAC 方向 / 油門</span><b id="d-dac">—</b></div>
+      </div>
+      <div class="notice" id="d-notice"></div>
+      <p class="hint">方向：拖動方向盤、滾輪，或 A / D。踏板：按住拖動，或按住 W / S。方向盤轉 ±450°（Pit House 900°）。
+        先發動（空檔、兩個踏板放開），再升到 1 檔才會走；倒車要停下後降到 R。</p>
+    </div>
+  </section>
+
+  <!-- raw DAC codes, with a zoomable axis for finding exact points -->
+  <section id="tab-dac" hidden>
+    <div class="card" data-ch="a">
+      <div class="head"><h2>方向（VA）</h2><div class="val" id="a-val"></div></div>
+      <canvas class="axis" id="a-axis"></canvas>
+      <div class="row">
+        <button data-step="-10">−10</button><button data-step="-1">−1</button>
+        <button data-rest>回中</button>
+        <button data-step="1">+1</button><button data-step="10">+10</button>
+        <span class="gap"></span>
+        <button data-zoom="out">縮小</button><button data-zoom="in">放大</button><button data-zoom="fit">全部</button>
+      </div>
+      <div class="marks"></div>
+    </div>
+    <div class="card" data-ch="b">
+      <div class="head"><h2>油門（VB）</h2><div class="val" id="b-val"></div></div>
+      <canvas class="axis" id="b-axis"></canvas>
+      <div class="row">
+        <button data-step="-10">−10</button><button data-step="-1">−1</button>
+        <button data-rest>回中</button>
+        <button data-step="1">+1</button><button data-step="10">+10</button>
+        <span class="gap"></span>
+        <button data-zoom="out">縮小</button><button data-zoom="in">放大</button><button data-zoom="fit">全部</button>
+      </div>
+      <div class="marks"></div>
+    </div>
+    <p class="hint">在軸上：滾輪 ±1（Shift ±10）；⌘ / Ctrl + 滾輪或觸控板雙指捏合，以游標為中心放大縮小；左右雙指滑動平移；拖曳直接設值。
+      點記錄好的數字可以跳回那個值。死區邊 = 輪子剛開始動的那一點。</p>
+    <div class="card">
+      <div class="head"><h2>結果</h2><button id="copy">複製</button></div>
+      <div id="summary">還沒有記錄。</div>
+    </div>
+  </section>
+
+  <pre id="log"></pre>
+</main>
+
+<script>
+const $ = s => document.querySelector(s);
+const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+const volts = c => (c * 3.3 / 4096).toFixed(3);
+
+// Steering centre / throttle stop as measured (main/remote.c).
+const REST = { a: 2020, b: 1507 };
+const MARKS = {
+  a: [['fullNeg', '左打到底'], ['bandNeg', '左死區邊'], ['bandPos', '右死區邊'], ['fullPos', '右打到底']],
+  b: [['fullNeg', '倒車全速'], ['bandNeg', '倒車起步'], ['bandPos', '前進起步'], ['fullPos', '前進全速']],
+};
+const dac = { a: REST.a, b: REST.b };
+const views = { a: { lo: 0, hi: 4095 }, b: { lo: 0, hi: 4095 } };
+// What was found on the bench (main/remote.c).
+let marks = { a: { fullNeg: 3320, bandNeg: 2200, bandPos: 1840, fullPos: 660 },
+              b: { fullNeg: 1720, bandNeg: 1610, bandPos: 1405, fullPos: 1320 } };
+try { const s = JSON.parse(localStorage.getItem('remote_marks2') || '{}'); for (const ch of ['a', 'b']) Object.assign(marks[ch], s[ch]); } catch (e) {}
+
+const sim = { steer: 0, gas: 0, brake: 0 };
+const held = new Set();
+let tab = 'sim';
+let port, writer, reader, piped, timer = null, dacDirty = false, dacTicks = 0;
+
+function log(line) {
+  const el = $('#log');
+  el.textContent += line + '\n';
+  if (el.textContent.length > 20000) el.textContent = el.textContent.slice(-15000);
+  el.scrollTop = el.scrollHeight;
+}
+
+async function send(line) {
+  if (!writer) return;
+  try { await writer.write(new TextEncoder().encode(line + '\r\n')); } catch (e) {}
+}
+
+// ---------- serial ----------
+// Every 50 ms: a wheel sample in the simulator (the P4 stops the engine
+// after 300 ms without one), or the DAC codes on a change and every 0.5 s
+// (so they come back after the P4 restarts; opening the port can reset it).
+function tick() {
+  if (tab === 'sim') {
+    send(`w ${sim.steer.toFixed(3)} ${sim.gas.toFixed(3)} ${sim.brake.toFixed(3)}`);
+  } else if (dacDirty || ++dacTicks >= 10) {
+    dacDirty = false; dacTicks = 0;
+    send(`d ${dac.a} ${dac.b}`);
+  }
+}
+
+async function readLoop() {
+  const decoder = new TextDecoderStream();
+  piped = port.readable.pipeTo(decoder.writable).catch(() => {});
+  reader = decoder.readable.getReader();
+  let buf = '';
+  try {
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buf += value;
+      let i;
+      while ((i = buf.indexOf('\n')) >= 0) {
+        const line = buf.slice(0, i).replace(/\x1b\[[0-9;]*m/g, '').trim();
+        buf = buf.slice(i + 1);
+        onLine(line);
+      }
+    }
+  } catch (e) { log('讀取中斷：' + e.message); }
+  disconnected();
+}
+
+function onLine(line) {
+  let m = line.match(/sim: engine (\w+) gear (\w) speed ([-+\d.]+) out ([-+\d.]+) ([-+\d.]+) dac (\d+) (\d+)\s*(.*)$/);
+  if (m) {
+    $('#d-engine').textContent = m[1] === 'ON' ? '運轉' : '熄火';
+    $('#d-gear').textContent = m[2];
+    $('#d-speed').textContent = Math.round(parseFloat(m[3]) * 100) + '%';
+    $('#d-dac').textContent = `${m[6]} / ${m[7]}`;
+    if (m[8]) $('#d-notice').textContent = m[8];
+    return;
+  }
+  m = line.match(/sim key \w+: .*?refused: (.*)$/);
+  if (m) $('#d-notice').textContent = '被拒絕：' + m[1];
+  else if (/sim key/.test(line)) $('#d-notice').textContent = '';
+  if (/remote|E \(/.test(line) && !/sim:/.test(line)) log(line);
+}
+
+// The read side has to be cancelled and unpiped before the port will close.
+async function closePort() {
+  const p = port, w = writer; // readLoop clears them once the read ends
+  if (!p) return;
+  try { await reader?.cancel(); } catch (e) {}
+  try { await piped; } catch (e) {}
+  try { w?.releaseLock(); } catch (e) {}
+  try { await p.close(); } catch (e) { log('關閉失敗：' + e.message); }
+  disconnected();
+}
+
+function disconnected() {
+  clearInterval(timer);
+  writer = null; port = null;
+  $('#status').textContent = '未連接';
+  $('#status').classList.remove('on');
+  $('#connect').textContent = '連接 P4';
+  $('#stop').disabled = true;
+}
+
+$('#connect').onclick = async () => {
+  if (port) { await send('x'); await closePort(); return; }
+  if (!('serial' in navigator)) { alert('這個瀏覽器不支援 Web Serial，請用 Chrome 打開。'); return; }
+  try {
+    port = await navigator.serial.requestPort();
+    await port.open({ baudRate: 115200 });
+    await port.setSignals({ dataTerminalReady: false, requestToSend: false }).catch(() => {});
+    writer = port.writable.getWriter();
+    $('#status').textContent = '已連接';
+    $('#status').classList.add('on');
+    $('#connect').textContent = '斷開';
+    $('#stop').disabled = false;
+    timer = setInterval(tick, 50);
+    readLoop();
+  } catch (e) { log('連接失敗：' + e.message); port = null; }
+};
+
+// Let go of the port when the tab goes away, so the P4 can be flashed.
+window.addEventListener('pagehide', () => { if (port) { send('x'); closePort(); } });
+
+$('#stop').onclick = () => {
+  if (tab === 'sim') { send('k stop'); sim.gas = sim.brake = 0; renderSim(); }
+  else { setDac('a', REST.a); setDac('b', REST.b); }
+};
+
+// ---------- tabs ----------
+document.querySelectorAll('[data-tab]').forEach(b => b.onclick = () => {
+  tab = b.dataset.tab;
+  document.querySelectorAll('[data-tab]').forEach(x => x.classList.toggle('on', x === b));
+  $('#tab-sim').hidden = tab !== 'sim';
+  $('#tab-dac').hidden = tab !== 'dac';
+  if (tab === 'dac') { dac.a = REST.a; dac.b = REST.b; dacDirty = true; renderDac(); }
+  else { sim.gas = sim.brake = 0; renderSim(); }
+});
+
+// ---------- simulator ----------
+function renderSim() {
+  $('#wheel-rot').setAttribute('transform', `rotate(${sim.steer * 450})`);
+  $('#steer-val').textContent = `${Math.round(sim.steer * 450)}°`;
+  for (const p of ['gas', 'brake']) {
+    $(`#${p} .fill`).style.height = (sim[p] * 100) + '%';
+    $(`#${p}-val`).textContent = Math.round(sim[p] * 100) + '%';
+  }
+}
+
+// Held keys ramp; released ones spring back when that's on.
+let dragging = { wheel: false, gas: false, brake: false };
+function stepKeys(dt) {
+  const spring = $('#spring').checked;
+  const steerKey = (held.has('d') ? 1 : 0) - (held.has('a') ? 1 : 0);
+  if (steerKey) sim.steer = clamp(sim.steer + steerKey * dt * 1.6, -1, 1);
+  else if (spring && !dragging.wheel) sim.steer = Math.abs(sim.steer) < 0.03 ? 0 : sim.steer * 0.8;
+  for (const [p, k] of [['gas', 'w'], ['brake', 's']]) {
+    if (held.has(k)) sim[p] = clamp(sim[p] + dt * 2.5, 0, 1);
+    else if (spring && !dragging[p]) sim[p] = clamp(sim[p] - dt * 4, 0, 1);
+  }
+  renderSim();
+}
+
+{
+  const box = $('#wheel');
+  let x0 = 0, s0 = 0;
+  box.addEventListener('pointerdown', e => { dragging.wheel = true; x0 = e.clientX; s0 = sim.steer; box.setPointerCapture(e.pointerId); });
+  box.addEventListener('pointermove', e => {
+    if (!dragging.wheel) return;
+    sim.steer = clamp(s0 + (e.clientX - x0) / 250, -1, 1); renderSim();
+  });
+  box.addEventListener('pointerup', () => dragging.wheel = false);
+  box.addEventListener('pointercancel', () => dragging.wheel = false);
+  box.addEventListener('wheel', e => {
+    e.preventDefault();
+    sim.steer = clamp(sim.steer + (e.deltaY + e.deltaX) / 1500, -1, 1); renderSim();
+  }, { passive: false });
+}
+
+for (const p of ['gas', 'brake']) {
+  const tr = $('#' + p);
+  const at = e => { const r = tr.getBoundingClientRect(); sim[p] = clamp((r.bottom - e.clientY) / r.height, 0, 1); renderSim(); };
+  tr.addEventListener('pointerdown', e => { dragging[p] = true; tr.setPointerCapture(e.pointerId); at(e); });
+  tr.addEventListener('pointermove', e => { if (dragging[p]) at(e); });
+  tr.addEventListener('pointerup', () => dragging[p] = false);
+  tr.addEventListener('pointercancel', () => dragging[p] = false);
+}
+
+$('#k-start').onclick = () => send('k start');
+$('#k-up').onclick = () => send('k up');
+$('#k-down').onclick = () => send('k down');
+
+// ---------- DAC axis ----------
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+
+function niceStep(range) {
+  const raw = range / 8, p = Math.pow(10, Math.floor(Math.log10(raw)));
+  for (const m of [1, 2, 5, 10]) if (raw <= m * p) return m * p;
+  return 10 * p;
+}
+
+function drawAxis(ch) {
+  const cv = $(`#${ch}-axis`), dpr = window.devicePixelRatio || 1;
+  const w = cv.clientWidth, h = cv.clientHeight;
+  if (cv.width !== w * dpr) { cv.width = w * dpr; cv.height = h * dpr; }
+  const g = cv.getContext('2d');
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  g.clearRect(0, 0, w, h);
+  const v = views[ch], X = c => (c - v.lo) / (v.hi - v.lo) * w;
+  const m = marks[ch];
+  // valid range (between the full points) and the dead band
+  if (m.fullNeg != null && m.fullPos != null) {
+    g.fillStyle = css('--valid');
+    const a = X(Math.min(m.fullNeg, m.fullPos)), b = X(Math.max(m.fullNeg, m.fullPos));
+    g.fillRect(a, 0, b - a, h);
+  }
+  if (m.bandNeg != null && m.bandPos != null) {
+    g.fillStyle = css('--band');
+    const a = X(Math.min(m.bandNeg, m.bandPos)), b = X(Math.max(m.bandNeg, m.bandPos));
+    g.fillRect(a, 0, b - a, h);
+  }
+  // ticks
+  const step = niceStep(v.hi - v.lo);
+  g.strokeStyle = css('--line'); g.fillStyle = css('--muted');
+  g.font = '11px ui-monospace, Menlo, monospace'; g.textAlign = 'center';
+  for (let c = Math.ceil(v.lo / step) * step; c <= v.hi; c += step) {
+    const x = Math.round(X(c)) + .5;
+    g.beginPath(); g.moveTo(x, h - 22); g.lineTo(x, h - 14); g.stroke();
+    g.fillText(c, x, h - 3);
+  }
+  // recorded points
+  g.font = '11px -apple-system, sans-serif';
+  MARKS[ch].forEach(([k, label], i) => {
+    if (m[k] == null) return;
+    const x = Math.round(X(m[k])) + .5;
+    g.strokeStyle = css('--muted'); g.setLineDash([3, 3]);
+    g.beginPath(); g.moveTo(x, 0); g.lineTo(x, h - 24); g.stroke(); g.setLineDash([]);
+    g.fillStyle = css('--muted'); g.fillText(label, x, 12 + (i % 2) * 13);
+  });
+  // rest and the current value
+  const xr = Math.round(X(REST[ch])) + .5;
+  g.strokeStyle = css('--muted'); g.beginPath(); g.moveTo(xr, 30); g.lineTo(xr, h - 24); g.stroke();
+  const xc = X(dac[ch]);
+  g.strokeStyle = css('--accent'); g.lineWidth = 3;
+  g.beginPath(); g.moveTo(xc, 0); g.lineTo(xc, h - 24); g.stroke(); g.lineWidth = 1;
+}
+
+function renderDac() {
+  for (const ch of ['a', 'b']) {
+    $(`#${ch}-val`).innerHTML = `${dac[ch]}<small>${volts(dac[ch])} V</small>`;
+    drawAxis(ch);
+    const box = document.querySelector(`[data-ch="${ch}"] .marks`);
+    if (!box.children.length) {
+      box.innerHTML = MARKS[ch].map(([k, label]) =>
+        `<div class="mark"><span>${label}</span><b data-k="${k}">—</b><button data-save="${k}">記錄</button></div>`).join('');
+      box.querySelectorAll('[data-save]').forEach(b => b.onclick = () => { marks[ch][b.dataset.save] = dac[ch]; saveMarks(); renderDac(); });
+      box.querySelectorAll('b[data-k]').forEach(b => b.onclick = () => { const v = marks[ch][b.dataset.k]; if (v != null) setDac(ch, v); });
+    }
+    box.querySelectorAll('b[data-k]').forEach(b => {
+      const v = marks[ch][b.dataset.k];
+      b.textContent = v == null ? '—' : `${v}（${volts(v)} V）`;
+    });
+  }
+  const name = { a: '方向', b: '油門' }, lines = [];
+  for (const ch of ['a', 'b']) {
+    const m = marks[ch];
+    if (!MARKS[ch].some(([k]) => m[k] != null)) continue;
+    lines.push(`${name[ch]}: ` + MARKS[ch].map(([k, label]) => `${label} ${m[k] ?? '?'}`).join('  '));
+  }
+  $('#summary').textContent = lines.length ? lines.join('\n') : '還沒有記錄。';
+}
+
+function saveMarks() { try { localStorage.setItem('remote_marks2', JSON.stringify(marks)); } catch (e) {} }
+
+// Keeps the current value on screen when it steps out of the view.
+function setDac(ch, v) {
+  dac[ch] = clamp(Math.round(v), 0, 4095);
+  const vw = views[ch], span = vw.hi - vw.lo;
+  if (dac[ch] < vw.lo || dac[ch] > vw.hi) { vw.lo = clamp(dac[ch] - span / 2, 0, 4095 - span); vw.hi = vw.lo + span; }
+  dacDirty = true;
+  renderDac();
+}
+
+function zoom(ch, factor, about) {
+  const v = views[ch];
+  const span = clamp((v.hi - v.lo) * factor, 20, 4095);
+  const t = (about - v.lo) / (v.hi - v.lo);
+  v.lo = clamp(about - t * span, 0, 4095 - span);
+  v.hi = v.lo + span;
+  drawAxis(ch);
+}
+
+for (const ch of ['a', 'b']) {
+  const card = document.querySelector(`[data-ch="${ch}"]`), cv = $(`#${ch}-axis`);
+  const codeAt = e => { const r = cv.getBoundingClientRect(), v = views[ch]; return v.lo + (e.clientX - r.left) / r.width * (v.hi - v.lo); };
+  let drag = false, acc = 0;
+  cv.addEventListener('pointerdown', e => { drag = true; cv.setPointerCapture(e.pointerId); setDac(ch, codeAt(e)); });
+  cv.addEventListener('pointermove', e => { if (drag) setDac(ch, codeAt(e)); });
+  cv.addEventListener('pointerup', () => drag = false);
+  cv.addEventListener('pointercancel', () => drag = false);
+  cv.addEventListener('wheel', e => {
+    e.preventDefault();
+    const v = views[ch];
+    if (e.ctrlKey || e.metaKey) { zoom(ch, Math.exp(e.deltaY * 0.01), codeAt(e)); return; }
+    if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
+      const d = e.deltaX / cv.clientWidth * (v.hi - v.lo);
+      const span = v.hi - v.lo; v.lo = clamp(v.lo + d, 0, 4095 - span); v.hi = v.lo + span; drawAxis(ch); return;
+    }
+    // One notch = one code; a trackpad's small deltas add up first.
+    acc += e.deltaMode === 1 ? e.deltaY * 30 : e.deltaY;
+    const n = Math.trunc(acc / 30);
+    if (n) { acc -= n * 30; setDac(ch, dac[ch] - n * (e.shiftKey ? 10 : 1)); }
+  }, { passive: false });
+  card.querySelectorAll('[data-step]').forEach(b => b.onclick = () => setDac(ch, dac[ch] + +b.dataset.step));
+  card.querySelector('[data-rest]').onclick = () => setDac(ch, REST[ch]);
+  card.querySelectorAll('[data-zoom]').forEach(b => b.onclick = () => {
+    if (b.dataset.zoom === 'fit') { views[ch] = { lo: 0, hi: 4095 }; drawAxis(ch); }
+    else zoom(ch, b.dataset.zoom === 'in' ? 0.4 : 2.5, dac[ch]);
+  });
+}
+
+$('#copy').onclick = () => navigator.clipboard.writeText($('#summary').textContent).catch(() => {});
+
+// ---------- keyboard ----------
+document.addEventListener('keydown', e => {
+  if (e.target.tagName === 'INPUT' && e.target.type !== 'checkbox') return;
+  const k = e.key.toLowerCase();
+  if (e.key === ' ') { e.preventDefault(); $('#stop').click(); return; }
+  if (tab === 'sim') {
+    if ('wasd'.includes(k) && k.length === 1) { held.add(k); e.preventDefault(); }
+    if (e.repeat) return;
+    if (e.key === 'Enter') send('k start');
+    if (k === 'e') send('k up');
+    if (k === 'q') send('k down');
+  } else {
+    const step = e.shiftKey ? 10 : 1;
+    const d = { ArrowLeft: ['a', -step], ArrowRight: ['a', step], ArrowDown: ['b', -step], ArrowUp: ['b', step] }[e.key];
+    if (d) { e.preventDefault(); setDac(d[0], dac[d[0]] + d[1]); }
+  }
+});
+document.addEventListener('keyup', e => held.delete(e.key.toLowerCase()));
+window.addEventListener('blur', () => held.clear());
+window.addEventListener('resize', () => { if (tab === 'dac') renderDac(); });
+
+setInterval(() => stepKeys(0.05), 50);
+renderSim();
+renderDac();
+</script>
+</body>
+</html>

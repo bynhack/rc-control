@@ -43,6 +43,10 @@ void control_init(int64_t timeout_us);
 
 // A wheel sample; doubles as the heartbeat.
 void control_input(float steering, float gas, float brake, int64_t now_us);
+// A simulated sample (the bench console). Refused, returning false, while
+// the real wheel has sent one in the last SIM_YIELD_MS: the wheel always wins.
+#define SIM_YIELD_MS 500
+bool control_input_sim(float steering, float gas, float brake, int64_t now_us);
 
 // Returns NULL on success, else why the engine won't start.
 const char *control_ignition_on(int64_t now_us);

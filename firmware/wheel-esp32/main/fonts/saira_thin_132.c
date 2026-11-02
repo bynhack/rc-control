@@ -1,7 +1,7 @@
 /*******************************************************************************
  * Size: 132 px
  * Bpp: 4
- * Opts: --font /private/tmp/claude-501/-Users-brian-Documents-Project-rc-control/04f0bf59-27e5-4eea-924b-37370234cefd/scratchpad/fontdl/Saira-Thin.ttf --symbols 0123456789 --size 132 --bpp 4 --no-compress --format lvgl --lv-include lvgl.h --lv-font-name saira_thin_132 -o saira_thin_132.c
+ * Opts: --font <fonts>/Saira-Thin.ttf --symbols 0123456789 --size 132 --bpp 4 --no-compress --format lvgl --lv-include lvgl.h --lv-font-name saira_thin_132 -o saira_thin_132.c
  ******************************************************************************/
 
 #ifdef LV_LVGL_H_INCLUDE_SIMPLE

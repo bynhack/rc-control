@@ -25,6 +25,7 @@
 #include "esp_log.h"
 #include "esp_system.h"
 #include "ffb.h"
+#include "remote.h"
 #include "lvgl.h"
 #include "dash_p4.h"
 #include "ui_p4.h"
@@ -178,17 +179,32 @@ static const char *const TEXT[T_COUNT][2] = {
     [T_ENDS_SAVE_R] = {"存右", "存右"},
     [T_SIDE_L_FMT] = {"向左 %.1f%%", "向左 %.1f%%"},
     [T_SIDE_R_FMT] = {"向右 %.1f%%", "向右 %.1f%%"},
-    [T_THR] = {"油门起步点", "油門起步點"},
+    [T_THR] = {"油门死区", "油門死區"},
     [T_THR_FMT] = {"前进 %.1f%%  倒车 %.1f%%", "前進 %.1f%%  倒車 %.1f%%"},
     [T_THR_SET] = {"用油门调", "用油門調"},
-    [T_THR_HINT] = {"油门要踩一段车才动就用这个。设好以后一踩车就走，每个档位都一样。",
-                    "油門要踩一段車才動就用這個。設好以後一踩車就走，每個檔位都一樣。"},
+    [T_THR_HINT] = {"油门要踩一段车才动，就是电调的死区。设好以后一踩车就走，每个档位都一样。",
+                    "油門要踩一段車才動，就是電調的死區。設好以後一踩車就走，每個檔位都一樣。"},
     [T_THR_HOW] = {"点火挂 1 档（倒车挂 R），慢慢踩油门，车刚开始动时按“保存”。前进、倒车各存一次。车会动，先架起来或放在空地上。",
                    "點火掛 1 檔（倒車掛 R），慢慢踩油門，車剛開始動時按「保存」。前進、倒車各存一次。車會動，先架起來或放在空地上。"},
     [T_THR_LIVE_F] = {"前进 %.1f%%", "前進 %.1f%%"},
     [T_THR_LIVE_R] = {"倒车 %.1f%%", "倒車 %.1f%%"},
     [T_THR_LIVE_N] = {"挂 1 档或 R 档", "掛 1 檔或 R 檔"},
     [T_SAVED_FMT] = {"已存：%s", "已存：%s"},
+    [T_STEER_DB] = {"方向死区", "方向死區"},
+    [T_STEER_DB_FMT] = {"左 %.1f%%  右 %.1f%%", "左 %.1f%%  右 %.1f%%"},
+    [T_STEER_DB_SET] = {"用方向盘调", "用方向盤調"},
+    [T_STEER_DB_HINT] = {"方向盘离开中间要转一段车轮才动时用（舵机或转向的死区）。设好以后方向盘一动车轮就跟着动。",
+                         "方向盤離開中間要轉一段車輪才動時用（舵機或轉向的死區）。設好以後方向盤一動車輪就跟著動。"},
+    [T_STEER_DB_HOW] = {"点火，方向盘从中间慢慢往左转，车轮刚开始动时按“存左”；再往右，按“存右”。",
+                        "點火，方向盤從中間慢慢往左轉，車輪剛開始動時按「存左」；再往右，按「存右」。"},
+    [T_KIND_REMOTE] = {"遥控器主板", "遙控器主板"},
+    [T_SUB_REMOTE] = {"方向盘  >  遥控器主板  >  车", "方向盤  >  遙控器主板  >  車"},
+    [T_TX_REMOTE] = {"DAC 输出中", "DAC 輸出中"},
+    [T_NO_DAC] = {"找不到 DAC", "找不到 DAC"},
+    [T_HINT_REMOTE] = {"车子原装遥控器的主板，摇杆电位器换成 MCP4728（I2C 0x60）。校准点在固件里，"
+                       "用电脑上的 remote_tune.html 精调。遥控器跟车照原来的方式对频。",
+                       "車子原裝遙控器的主板，搖桿電位器換成 MCP4728（I2C 0x60）。校準點在固件裡，"
+                       "用電腦上的 remote_tune.html 精調。遙控器跟車照原來的方式對頻。"},
     [T_TOP_SPEED] = {"最高车速", "最高車速"},
     [T_TOP_HINT] = {"车上没有测速器：仪表的车速 = 估算的速度比例 × 最高车速。按这台车的实际极速填写。",
                     "車上沒有測速器：儀表的車速 = 估算的速度比例 × 最高車速。按這台車的實際極速填寫。"},
@@ -302,11 +318,11 @@ static void add_option(radio_config_t *c, intptr_t d) {
 }
 
 static void flip_steer(radio_config_t *c, intptr_t unused) {
-    c->rev_steer[c->kind] = !c->rev_steer[c->kind];
+    radio_rev_flip(c, false);
 }
 
 static void flip_thr(radio_config_t *c, intptr_t unused) {
-    c->rev_thr[c->kind] = !c->rev_thr[c->kind];
+    radio_rev_flip(c, true);
 }
 
 static void on_kind(lv_event_t *e) {
@@ -360,6 +376,15 @@ static void reset_thr(radio_config_t *c, intptr_t unused) {
     c->thr_start[0] = c->thr_start[1] = 0;
 }
 
+static void set_steer_start(radio_config_t *c, intptr_t side_permille) {
+    int side = side_permille < 0 ? 0 : 1;
+    c->steer_start[side] = (uint16_t)clampi(abs((int)side_permille), 0, STEER_START_MAX);
+}
+
+static void reset_steer_start(radio_config_t *c, intptr_t unused) {
+    c->steer_start[0] = c->steer_start[1] = 0;
+}
+
 static void add_range(radio_config_t *c, intptr_t d) {
     c->steer_deg = (uint16_t)clampi(c->steer_deg + (int)d, STEER_DEG_MIN, WHEEL_DEG);
 }
@@ -380,6 +405,10 @@ static void on_thr_reset(lv_event_t *e) {
     edit(reset_thr, 0);
 }
 
+static void on_steer_db_reset(lv_event_t *e) {
+    edit(reset_steer_start, 0);
+}
+
 static void on_range(lv_event_t *e) {
     edit(add_range, (intptr_t)lv_event_get_user_data(e));
 }
@@ -390,14 +419,20 @@ static void on_expo(lv_event_t *e) {
 
 // The panel's buttons per step: left (hidden if none), middle, right.
 static void cal_open(radio_cal_t cal) {
-    static const int title[] = {[CAL_TRIM] = T_TRIM, [CAL_ENDS] = T_ENDS, [CAL_THROTTLE] = T_THR};
-    static const int how[] = {[CAL_TRIM] = T_TRIM_HOW, [CAL_ENDS] = T_ENDS_HOW, [CAL_THROTTLE] = T_THR_HOW};
+    static const int title[] = {
+        [CAL_TRIM] = T_TRIM, [CAL_ENDS] = T_ENDS, [CAL_THROTTLE] = T_THR, [CAL_STEER_START] = T_STEER_DB};
+    static const int how[] = {[CAL_TRIM] = T_TRIM_HOW,
+                              [CAL_ENDS] = T_ENDS_HOW,
+                              [CAL_THROTTLE] = T_THR_HOW,
+                              [CAL_STEER_START] = T_STEER_DB_HOW};
     static const int btn[][3] = {[CAL_TRIM] = {-1, T_TRIM_SAVE, T_TRIM_CANCEL},
                                  [CAL_ENDS] = {T_ENDS_SAVE_L, T_ENDS_SAVE_R, T_DONE},
-                                 [CAL_THROTTLE] = {-1, T_TRIM_SAVE, T_TRIM_CANCEL}};
+                                 [CAL_THROTTLE] = {-1, T_TRIM_SAVE, T_TRIM_CANCEL},
+                                 [CAL_STEER_START] = {T_ENDS_SAVE_L, T_ENDS_SAVE_R, T_DONE}};
     static const int act[][3] = {[CAL_TRIM] = {0, ACT_SAVE, ACT_CANCEL},
                                  [CAL_ENDS] = {ACT_SAVE_L, ACT_SAVE_R, ACT_CANCEL},
-                                 [CAL_THROTTLE] = {0, ACT_SAVE, ACT_CANCEL}};
+                                 [CAL_THROTTLE] = {0, ACT_SAVE, ACT_CANCEL},
+                                 [CAL_STEER_START] = {ACT_SAVE_L, ACT_SAVE_R, ACT_CANCEL}};
     radio_cal_set(cal);
     set_text(s_cal_title, tr(title[cal]));
     set_text(s_cal_how, tr(how[cal]));
@@ -437,6 +472,10 @@ static void on_cal_btn(lv_event_t *e) {
         // Each side from its own side of the centre only.
         if ((a == ACT_SAVE_L && v < 0) || (a == ACT_SAVE_R && v > 0)) {
             edit(set_end, v);
+        }
+    } else if (cal == CAL_STEER_START) {
+        if ((a == ACT_SAVE_L && v < 0) || (a == ACT_SAVE_R && v > 0)) {
+            edit(set_steer_start, v);
         }
     } else if (cal == CAL_THROTTLE) {
         // Forward in a forward gear, reverse in R; nothing in N or braking.
@@ -749,7 +788,7 @@ static lv_obj_t *hint_at(lv_obj_t *t, int x, int y, int id) {
     return h;
 }
 
-static lv_obj_t *s_range_val, *s_expo_val, *s_ends_val, *s_thr_val;
+static lv_obj_t *s_range_val, *s_expo_val, *s_ends_val, *s_thr_val, *s_steer_db_val;
 
 // Handling tab: how the active car answers the wheel and the pedals.
 static void build_handle_tab(lv_obj_t *t) {
@@ -777,6 +816,10 @@ static void build_handle_tab(lv_obj_t *t) {
     setup_label(t, lx, 420, T_TRIM);
     s_trim_val = cal_row(t, lx, 444, T_TRIM_SET, CAL_TRIM, T_TRIM_RESET, on_trim_reset);
     hint_at(t, lx, 508, T_TRIM_HINT);
+
+    setup_label(t, rx, 420, T_STEER_DB);
+    s_steer_db_val = cal_row(t, rx, 444, T_STEER_DB_SET, CAL_STEER_START, T_TRIM_RESET, on_steer_db_reset);
+    hint_at(t, rx, 508, T_STEER_DB_HINT);
 }
 
 // ---- cars --------------------------------------------------------------------
@@ -872,6 +915,7 @@ static void show_cars(void) {
         set_text(s_car_name[i], name);
         const char *radio = c.radio.kind == RADIO_ELRS          ? "ELRS"
                             : c.radio.kind == RADIO_MULTI_PPM ? tr(T_KIND_PPM)
+                            : c.radio.kind == RADIO_REMOTE    ? tr(T_KIND_REMOTE)
                                                               : MULTI_PROTOS[c.radio.proto].name;
         snprintf(buf, sizeof(buf), "%s\n%d km/h  ·  %s", radio, c.top_kmh,
                  tr(sounds[c.sound < SOUND_VOICES ? c.sound : 0]));
@@ -927,8 +971,8 @@ static void build_setup(void) {
     lv_obj_t *r = s_tab_page[TAB_RADIO];
     // Which radio transmits.
     setup_label(r, M + 8, 78, T_OUTPUT);
-    static const int kinds[RADIO_KINDS] = {-1, T_KIND_SERIAL, T_KIND_PPM};
-    const int kw = (1024 - 2 * M - 16 - 2 * 12) / 3;
+    static const int kinds[RADIO_KINDS] = {-1, T_KIND_SERIAL, T_KIND_PPM, T_KIND_REMOTE};
+    const int kw = (1024 - 2 * M - 16 - (RADIO_KINDS - 1) * 12) / RADIO_KINDS;
     for (int i = 0; i < RADIO_KINDS; i++) {
         s_kind_btn[i] = button(r, M + 8 + i * (kw + 12), 100, kw, 60, C_CYAN, &cjk_20, "ELRS");
         if (kinds[i] >= 0) {
@@ -1031,9 +1075,23 @@ static void thr_text(char *buf, size_t n, const radio_config_t *c) {
     snprintf(buf, n, tr(T_THR_FMT), c->thr_start[0] / 10.0, c->thr_start[1] / 10.0);
 }
 
+static void steer_db_text(char *buf, size_t n, const radio_config_t *c) {
+    snprintf(buf, n, tr(T_STEER_DB_FMT), c->steer_start[0] / 10.0, c->steer_start[1] / 10.0);
+}
+
+// "向左 4.2%", or centred.
+static void side_text(char *buf, size_t n, float v) {
+    int pm = (int)lroundf(v * 1000.0f);
+    if (pm == 0) {
+        snprintf(buf, n, "%s", tr(T_TRIM_ZERO));
+    } else {
+        snprintf(buf, n, tr(pm < 0 ? T_SIDE_L_FMT : T_SIDE_R_FMT), abs(pm) / 10.0);
+    }
+}
+
 static void show_cal(const display_state_t *s) {
     const radio_config_t *c = &s->cfg;
-    s_steer_now = radio_steer_shape(c, s->ctl.steering);
+    s_steer_now = radio_steer_base(c, s->ctl.steering);
     s_gear_now = s->ctl.gear;
     radio_cal_t cal = radio_cal_get();
     if (cal == CAL_NONE || lv_obj_has_flag(s_cal_panel, LV_OBJ_FLAG_HIDDEN)) {
@@ -1048,13 +1106,13 @@ static void show_cal(const display_state_t *s) {
         // What the servo gets with no end points (trim included).
         float v = s_steer_now + c->trim / 1000.0f;
         s_cal_out = v < -1.0f ? -1.0f : (v > 1.0f ? 1.0f : v);
-        int pm = (int)lroundf(s_cal_out * 1000.0f);
-        if (pm == 0) {
-            snprintf(buf, sizeof(buf), "%s", tr(T_TRIM_ZERO));
-        } else {
-            snprintf(buf, sizeof(buf), tr(pm < 0 ? T_SIDE_L_FMT : T_SIDE_R_FMT), abs(pm) / 10.0);
-        }
+        side_text(buf, sizeof(buf), s_cal_out);
         ends_text(saved, sizeof(saved), c);
+    } else if (cal == CAL_STEER_START) {
+        // The wheel shaped, without the dead band (left out while it's set).
+        s_cal_out = s_steer_now;
+        side_text(buf, sizeof(buf), s_cal_out);
+        steer_db_text(saved, sizeof(saved), c);
     } else {
         s_cal_out = s->ctl.output.throttle;
         if (s_gear_now == GEAR_N) {
@@ -1175,6 +1233,8 @@ static void show_drive(const display_state_t *s) {
             n = T_PRESS_START, nc = C_DIM;
         } else if (s->cfg.kind == RADIO_ELRS && !s->radio.link) {
             n = T_NO_LINK, nc = C_RED;
+        } else if (s->cfg.kind == RADIO_REMOTE && !remote_status().found) {
+            n = T_NO_DAC, nc = C_RED;
         }
     }
     float thr = c->output.throttle;
@@ -1204,10 +1264,23 @@ static void show_link(const display_state_t *s) {
     } else if (cfg->kind == RADIO_MULTI_SERIAL) {
         snprintf(buf, sizeof(buf), tr(T_SUB_MULTI_FMT), proto);
         set_text(s_sub, buf);
+    } else if (cfg->kind == RADIO_REMOTE) {
+        set_text(s_sub, tr(T_SUB_REMOTE));
     } else {
         set_text(s_sub, tr(T_SUB_PPM));
     }
-    if (cfg->kind != RADIO_ELRS) {
+    if (cfg->kind == RADIO_REMOTE) {
+        // The toy remote: one way, no telemetry; show whether the DAC answers.
+        remote_status_t rs = remote_status();
+        set_text(s_tx_label, tr(rs.found ? T_TX_REMOTE : T_NO_DAC));
+        lv_obj_set_style_text_color(s_tx_label, hex(rs.found ? C_CYAN : C_RED), 0);
+        snprintf(buf, sizeof(buf), "DAC %u / %u", rs.steer, rs.thr);
+        set_text(s_rssi_label, buf);
+        set_text(s_lq_label, tr(T_NO_TELEM));
+        for (int i = 0; i < LQ_SEGS; i++) {
+            lv_obj_set_style_bg_color(s_lq_seg[i], hex(C_TRACK), 0);
+        }
+    } else if (cfg->kind != RADIO_ELRS) {
         // MULTI: one way, no telemetry; show what is being sent.
         if (s->multi.binding) {
             snprintf(buf, sizeof(buf), tr(T_BINDING_FMT), s->multi.bind_left_s);
@@ -1291,7 +1364,7 @@ static void show_setup(const display_state_t *s) {
     set_text(s_rx_val, buf);
     snprintf(buf, sizeof(buf), "%d", c->option);
     set_text(s_opt_val, buf);
-    highlight(s_rev_steer, c->rev_steer[c->kind], C_CYAN);
+    highlight(s_rev_steer, radio_rev(c, false), C_CYAN);
     trim_text(buf, sizeof(buf), c->trim);
     set_text(s_trim_val, buf);
     snprintf(buf, sizeof(buf), "%d°", c->steer_deg);
@@ -1302,7 +1375,9 @@ static void show_setup(const display_state_t *s) {
     set_text(s_ends_val, buf);
     thr_text(buf, sizeof(buf), c);
     set_text(s_thr_val, buf);
-    highlight(s_rev_thr, c->rev_thr[c->kind], C_CYAN);
+    steer_db_text(buf, sizeof(buf), c);
+    set_text(s_steer_db_val, buf);
+    highlight(s_rev_thr, radio_rev(c, true), C_CYAN);
 
     bool serial = c->kind == RADIO_MULTI_SERIAL, elrs = c->kind == RADIO_ELRS;
     if (serial || elrs) {
@@ -1327,6 +1402,8 @@ static void show_setup(const display_state_t *s) {
         hint = tr(ui_elrs_duplex_get() ? T_HINT_ELRS2 : T_HINT_ELRS);
     } else if (serial) {
         hint = tr(T_HINT_SERIAL);
+    } else if (c->kind == RADIO_REMOTE) {
+        hint = tr(T_HINT_REMOTE);
     } else {
         hint = tr(T_HINT_PPM);
     }

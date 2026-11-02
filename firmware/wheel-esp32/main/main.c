@@ -34,6 +34,7 @@
 #include "multi.h"
 #include "radio.h"
 #if CONFIG_IDF_TARGET_ESP32P4
+#include "remote.h"
 #include "sound.h"
 #endif
 #include "wheel.h"
@@ -379,6 +380,7 @@ void app_main(void) {
     display_init();
 #if CONFIG_IDF_TARGET_ESP32P4
     sound_start();
+    remote_start();
 #endif
 
     xTaskCreatePinnedToCore(usb_lib_task, "usb_lib", 4096, xTaskGetCurrentTaskHandle(), 2, NULL, 0);
