@@ -1,6 +1,18 @@
 # rc-control
 
-电脑端遥控车控制程序：电脑通过 ExpressLRS 高频头发 CRSF 控制车，同时用内置图传接收 OpenIPC 摄像头画面。
+用模拟赛车方向盘开遥控车。项目分三部分：
+
+| 部分 | 目录 | 说明 |
+|---|---|---|
+| 电脑端 | 仓库根目录（Rust） | 电脑通过 ExpressLRS 高频头发 CRSF 控制车，同时用内置图传接收 OpenIPC 摄像头画面。本文件下面都是这部分 |
+| 不用电脑 | [`firmware/wheel-esp32`](firmware/wheel-esp32/README.md) | ESP32-P4 + 7 寸触控屏：方向盘插上就能开车。ELRS、四合一、玩具车原装遥控器三种发射方式，每台车各自的操控设置，力回馈、仪表盘、引擎声浪，以及 3D 打印外壳 |
+| 硬件 | [`hardware/`](hardware/) | 车上用的转接板（KiCad） |
+
+Drive RC cars with a sim-racing wheel: a desktop app (ExpressLRS + OpenIPC video) and a standalone ESP32-P4 controller. Docs are in Chinese. Licensed under GPL-3.0.
+
+---
+
+**电脑端**：电脑通过 ExpressLRS 高频头发 CRSF 控制车，同时用内置图传接收 OpenIPC 摄像头画面。
 
 | 高频头 | 接法 | 配置 |
 |---|---|---|
@@ -162,4 +174,18 @@ RC_CONTROL_DEMO="0.45,0.85,high" RC_CONTROL_SNAPSHOT=/tmp/ui.bmp ./target/releas
 
 ## 许可证
 
-GPL-3.0，见 [LICENSE](LICENSE)。图传收包部分来自 [Aviateur](https://github.com/OpenIPC/aviateur)（同为 GPL-3.0）。
+本项目（电脑端程序、ESP32 固件、3D 打印模型、硬件设计）以 **GPL-3.0-only** 发布，全文见 [LICENSE](LICENSE)。可以自由使用、修改和再发布；发布修改后的版本（包括烧进设备的固件）时，要同样以 GPL-3.0 提供源码。
+
+用到的第三方代码和资源，各自保留原来的许可证：
+
+| 部分 | 位置 | 许可证 |
+|---|---|---|
+| [Aviateur](https://github.com/OpenIPC/aviateur)（图传收包：devourer + wfb-ng） | `third_party/aviateur`（子模块） | GPL-3.0 |
+| ffmpeg-sys-next 9.0.1（加了 Windows 空 stub） | `vendor/ffmpeg-sys-next-9.0.1` | WTFPL（链接的 FFmpeg 本身是 LGPL/GPL） |
+| ESP-IDF usb_host_hid（加了 OUT 端点发送） | `firmware/wheel-esp32/components/usb_host_hid` | Apache-2.0 |
+| ESP-IDF、LVGL、微雪 BSP 等组件 | 编译时由 ESP-IDF 组件管理器下载 | Apache-2.0 / MIT 等，见各组件 |
+| Noto Sans SC、Saira、Barlow Condensed（生成的点阵字形） | `firmware/wheel-esp32/main/fonts` | SIL Open Font License 1.1 |
+
+MOZA、Thrustmaster、ExpressLRS、OpenIPC、微雪等名称只用来说明兼容的硬件，跟本项目没有关系。
+
+**免责：** 遥控车有速度、有重量，改装涉及电池和无线电。照本项目接线、改装造成的损坏或伤害自行负责；无线电发射请遵守当地法规。
