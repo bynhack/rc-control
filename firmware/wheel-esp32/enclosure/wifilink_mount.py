@@ -30,7 +30,7 @@ import sys
 
 from manifold3d import Manifold
 
-from enclosure import OUT, box, cyl, preview, rbox, to_trimesh
+from cad import OUT, box, cyl, preview, rbox, to_trimesh
 
 # ---- parts -------------------------------------------------------------------------
 WL_W, WL_D, WL_H = 34.0, 36.0, 14.0  # MEASURE: WiFiLink 2 body (only for the checks and the plate size)

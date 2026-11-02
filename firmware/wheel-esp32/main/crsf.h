@@ -1,8 +1,9 @@
-// CRSF to an ExpressLRS TX module over one wire (half duplex).
+// CRSF to an ExpressLRS TX module: one wire (half duplex) for a BETAFPV
+// module, or two (full duplex) for a Nano receiver flashed as a TX.
 //
-// Wiring: module CRSF pin -> GPIO17 (ESP32-S3) or GPIO28 (P4 7B, terminal
-// P3), GND -> GND. Same settings as the
-// PC program: 400000 baud, BETAFPV DIP switches 3 and 4 ON.
+// Wiring (P4 7B, terminal P3): one wire: module CRSF pin -> GPIO28; two
+// wires: GPIO28 -> Nano RX, GPIO30 <- Nano TX. GND -> GND. Same settings as
+// the PC program: 400000 baud, BETAFPV DIP switches 3 and 4 ON.
 //
 // Channel 1 = steering, channel 2 = throttle, the rest centred.
 #pragma once

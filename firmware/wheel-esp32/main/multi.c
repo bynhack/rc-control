@@ -15,11 +15,7 @@
 static const char *TAG = "multi";
 
 #define MULTI_UART UART_NUM_2
-#if CONFIG_IDF_TARGET_ESP32P4
 #define MULTI_PIN 29
-#else
-#define MULTI_PIN 18
-#endif
 // 100000 baud 8E2. Not inverted: the IRX4+ only lights its red LED solid
 // (valid input) this way round; inverted it blinks.
 #define MULTI_BAUD 100000

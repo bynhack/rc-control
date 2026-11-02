@@ -1,9 +1,5 @@
-// Status screen, per target:
-//   ESP32-S3: 1.28" round GC9A01 (240x240, SPI), display.c
-//     RST -> GPIO8   CS  -> GPIO10   DC -> GPIO9
-//     SDA -> GPIO11  SCL -> GPIO12   (SPI MOSI / clock, not I2C)
-//     VCC -> 3V3     GND -> GND      (no backlight pin; always on)
-//   ESP32-P4 (Waveshare 7B): the board's 7" 1024x600 touch panel, display_p4.c
+// The dashboard and settings on the Waveshare 7B's 7" 1024x600 touch panel
+// (display_p4.c, dash_p4.c).
 #pragma once
 
 #include <stdbool.h>

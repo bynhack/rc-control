@@ -13,7 +13,6 @@
 
 #include "sdkconfig.h"
 
-#if CONFIG_IDF_TARGET_ESP32P4
 
 #include <math.h>
 #include <stdio.h>
@@ -1422,5 +1421,3 @@ void display_show(const display_state_t *s) {
     show_cars();
     bsp_display_unlock();
 }
-
-#endif  // CONFIG_IDF_TARGET_ESP32P4

@@ -23,7 +23,7 @@ import sys
 import numpy as np
 from manifold3d import CrossSection, JoinType, Manifold
 
-from enclosure import OUT, box, preview, to_trimesh
+from cad import OUT, box, preview, to_trimesh
 
 DECK = 21.0  # chassis floor to the deck's top
 L = 68.0

@@ -39,7 +39,7 @@ import sys
 import numpy as np
 from manifold3d import Manifold
 
-from enclosure import OUT, box, cyl, preview, to_trimesh
+from cad import OUT, box, cyl, preview, to_trimesh
 
 FIT = 0.3
 

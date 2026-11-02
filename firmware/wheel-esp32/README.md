@@ -4,7 +4,6 @@
 
 - 主要硬體：微雪 ESP32-P4-WIFI6-Touch-LCD-7B + MOZA R5
 - 發射方式：ELRS、四合一（MULTI）、玩具車原裝遙控器主板
-- 最早的 ESP32-S3 + 圓屏版本見[最後一節](#舊版esp32-s3--圓屏)
 
 ## 硬體
 
@@ -30,12 +29,12 @@
 
 ## 編譯和燒錄
 
-ESP-IDF v5.5：
+ESP-IDF v5.5，目標預設就是 ESP32-P4：
 
 ```bash
 . ~/esp/esp-idf/export.sh
-idf.py -B build-p4 -D SDKCONFIG=sdkconfig.p4 -D DEPENDENCIES_LOCK=dependencies.lock.esp32p4 build
-idf.py -B build-p4 -D SDKCONFIG=sdkconfig.p4 -D DEPENDENCIES_LOCK=dependencies.lock.esp32p4 -p /dev/cu.usbmodemXXXX flash
+idf.py build
+idf.py -p /dev/cu.usbmodemXXXX flash
 ```
 
 Log 在「USB TO UART」那個口，115200。
@@ -178,24 +177,10 @@ python3 -m http.server 8765 --bind 127.0.0.1 --directory tools
 | `p4_case.py` | P4 桌上外殼：螢幕托盤 `p4_tray.stl`、裝在 MOZA 底座上的支架 `p4_stand.stl`（內含喇叭槽和 Nano 位置）、四合一蓋板 `p4_multi_cover.stl` |
 | `minicar_cage.py`、`minicar_mount.py` | 小車上的接收機／電子倉 |
 | `vtx_mount.py`、`camera_pod.py`、`wifilink_mount.py` | 圖傳和攝像頭支架 |
-| `enclosure.py` | 舊版 S3 外殼 |
 
-每個 `.py` 開頭說明列印方向和用到的螺絲；標 `MEASURE` 的參數要用卡尺量實物再改。
+每個 `.py` 開頭說明列印方向和用到的螺絲；標 `MEASURE` 的參數要用卡尺量實物再改。共用的幾何和預覽函式在 `cad.py`。
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install manifold3d numpy trimesh matplotlib
 .venv/bin/python enclosure/p4_case.py
 ```
-
-## 舊版：ESP32-S3 + 圓屏
-
-第一版硬體（`sdkconfig.defaults.esp32s3`），只有 ELRS 單線和簡單的狀態顯示。**目前編譯不過**（LVGL 設定還沒跟上 P4 版的改動，待修）。硬體：ESP32-S3-N16R8 開發板 + BETAFPV ELRS 高頻頭 + 1.28" GC9A01 圓屏。
-
-| 用途 | 接法 |
-|---|---|
-| 方向盤 | 開發板的 ESP32-OTG 口（需要輸出 5V） |
-| 高頻頭 | CRSF 接 GPIO17（單線半雙工，400000 baud，BETAFPV 撥碼 3、4 ON），GND 共地 |
-| 圓屏 | RST→8、CS→10、DC→9、SDA→11、SCL→12、VCC→3V3、GND |
-| Log | UART0（TX0 = GPIO43），115200 |
-
-外殼是 `enclosure/enclosure.py`（`body.stl` 頂面朝下印、`plate.stl` 平放）。供電：DC 頭接 7～12V，高頻頭從 DC 輸入端直接取電（1W 發射電流大，不要接 MB102 的 5V），ESP32、圓屏和方向盤接 MB102 的 5V 輸出，全部共地。

@@ -62,7 +62,7 @@ import sys
 import numpy as np
 from manifold3d import CrossSection, JoinType, Manifold, OpType
 
-from enclosure import OUT, box, cyl, preview, rbox, to_trimesh
+from cad import OUT, box, cyl, preview, rbox, to_trimesh
 
 # ---- printer / fit -----------------------------------------------------------
 FIT = 0.4

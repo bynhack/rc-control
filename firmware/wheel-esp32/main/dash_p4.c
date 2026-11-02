@@ -2,7 +2,6 @@
 
 #include "sdkconfig.h"
 
-#if CONFIG_IDF_TARGET_ESP32P4
 
 #include <stdio.h>
 
@@ -498,5 +497,3 @@ void dash_show(const dash_values_t *v) {
         s_toast_at = -1;
     }
 }
-
-#endif  // CONFIG_IDF_TARGET_ESP32P4

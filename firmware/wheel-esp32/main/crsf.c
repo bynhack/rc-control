@@ -17,7 +17,6 @@
 static const char *TAG = "crsf";
 
 #define CRSF_UART UART_NUM_1
-#if CONFIG_IDF_TARGET_ESP32P4
 // Waveshare P4 7B: P3 expansion terminal. The board's UART terminal (H8) is
 // UART0 on GPIO37/38, shared with the CH343P console, so it can't be used.
 // CRSF_PIN carries both directions in one-wire mode, or only ours (to the
@@ -25,10 +24,6 @@ static const char *TAG = "crsf";
 // CRSF_RX_PIN.
 #define CRSF_PIN 28
 #define CRSF_RX_PIN 30
-#else
-#define CRSF_PIN 17
-#define CRSF_RX_PIN 16
-#endif
 #define CRSF_BAUD 400000
 #define FRAME_PERIOD_MS 4
 // One device ping every this many frames (~1 s), to tell TX alive from dead.

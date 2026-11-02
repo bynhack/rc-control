@@ -45,7 +45,7 @@ import sys
 import numpy as np
 from manifold3d import CrossSection, Manifold, OpType
 
-from enclosure import OUT, box, cyl, preview, rbox, rrect, to_trimesh
+from cad import OUT, box, cyl, preview, rbox, rrect, to_trimesh
 from p4_case import tris_b64
 from minicar_cage import H_FRONT, H_REAR, L, W_LOW, W_ROOF, W_SLOPE, Z_LOW, Z_SLOPE
 from vtx_mount import (CAM_H, CAM_L, CAM_PIVOT_BACK, CAM_W, FAN_HOLES, FAN_T, FAN_W, LENS_D, LENS_L, VTX_H, VTX_W)

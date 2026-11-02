@@ -1,13 +1,14 @@
-// Standalone wheel controller: wheel base over USB host in, CRSF to an ELRS
-// TX module out, no PC. Known bases (wheel.h: T300RS, MOZA R5) are parsed;
-// any other HID device has its report descriptor and changing raw reports
-// dumped so its layout can be worked out.
+// Standalone wheel controller on the Waveshare ESP32-P4 7B: wheel base over
+// USB host in, the selected radio out (radio.h), no PC. Known bases
+// (wheel.h: T300RS, MOZA R5) are parsed; any other HID device has its report
+// descriptor and changing raw reports dumped so its layout can be worked out.
 //
 // Wiring:
-//   ESP32-OTG port  <- wheel base (via OTG adapter; the port must supply 5 V)
-//   GPIO17          -> ELRS TX module CRSF pin (crsf.h)
-//   GPIO8..12       -> round status screen (display.h)
-//   UART0 (TX0)     -> log, 115200; CH340C port or a 3.3 V-safe USB-TTL
+//   USB-A (OTG)        <- wheel base
+//   GPIO28 / GPIO30    -> ELRS module (crsf.h)
+//   GPIO29             -> MULTI module (multi.h)
+//   I2C terminal       -> MCP4728 for a toy remote (remote.h)
+//   UART0              -> log and bench console, 115200, the "USB TO UART" port
 //
 // Wheel buttons (MOZA R5 numbering, read off the log):
 //   Start (36)          ignition on / off (starts in neutral, pedals released)
@@ -33,10 +34,8 @@
 #include "ffb.h"
 #include "multi.h"
 #include "radio.h"
-#if CONFIG_IDF_TARGET_ESP32P4
 #include "remote.h"
 #include "sound.h"
-#endif
 #include "wheel.h"
 
 static const char *TAG = "wheel";
@@ -378,10 +377,8 @@ void app_main(void) {
     crsf_start();
     multi_start();
     display_init();
-#if CONFIG_IDF_TARGET_ESP32P4
     sound_start();
     remote_start();
-#endif
 
     xTaskCreatePinnedToCore(usb_lib_task, "usb_lib", 4096, xTaskGetCurrentTaskHandle(), 2, NULL, 0);
     ulTaskNotifyTake(pdFALSE, pdMS_TO_TICKS(1000));
