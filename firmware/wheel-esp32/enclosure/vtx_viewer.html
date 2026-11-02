@@ -1,0 +1,349 @@
+<title>圖傳散熱支架</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+  /* Layout: CAD inspector. 3D viewport on the left with its controls, design notes on the right; stacks on phones. */
+  :root {
+    --bg: #e9edf1;
+    --panel: #f8fafb;
+    --line: #d3dae2;
+    --fg: #16202b;
+    --muted: #5a6776;
+    --accent: #d9732b;
+    --air: #2f7fd1;
+    --viewport: #dfe5eb;
+    --chip: #eef2f5;
+    --font-ui: "IBM Plex Sans", "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", system-ui, sans-serif;
+    --font-data: "IBM Plex Mono", "SF Mono", ui-monospace, Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #10151b; --panel: #161c24; --line: #263040; --fg: #e4e9ef; --muted: #8b98a8;
+      --accent: #f0904a; --air: #5aa8f5; --viewport: #0c1116; --chip: #1d2530;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #10151b; --panel: #161c24; --line: #263040; --fg: #e4e9ef; --muted: #8b98a8;
+    --accent: #f0904a; --air: #5aa8f5; --viewport: #0c1116; --chip: #1d2530;
+    color-scheme: dark;
+  }
+  html, body { height: 100%; }
+  body { background: var(--bg); color: var(--fg); font-family: var(--font-ui); font-size: 14px; display: flex; flex-direction: column; }
+  .app { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) 380px; min-height: 0; }
+  .stage { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+  #view { flex: 1; min-height: 320px; background: var(--viewport); position: relative; }
+  #view canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+  .hint { position: absolute; left: max(12px, env(safe-area-inset-left, 0px)); bottom: 10px; color: var(--muted); font-size: 12px; pointer-events: none; }
+  .controls {
+    display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center;
+    padding-block: 12px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: 16px;
+    border-top: 1px solid var(--line); background: var(--panel);
+  }
+  .controls label { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
+  .controls input[type=range] { width: 130px; accent-color: var(--accent); }
+  .controls output { font-family: var(--font-data); font-variant-numeric: tabular-nums; color: var(--fg); min-width: 3.5em; }
+  .toggle { display: flex; gap: 6px; flex-wrap: wrap; }
+  .toggle button {
+    font: inherit; font-size: 13px; color: var(--fg); background: var(--chip); border: 1px solid var(--line);
+    border-radius: 6px; padding: 5px 10px; cursor: pointer;
+  }
+  .toggle button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+  .toggle button:focus-visible, .note:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  aside {
+    border-left: 1px solid var(--line); background: var(--panel); overflow-y: auto; min-height: 0;
+    padding-block: 18px 28px; padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-left: 18px;
+    display: flex; flex-direction: column; gap: 18px;
+  }
+  h1 { font-size: 19px; font-weight: 600; margin: 0; text-wrap: balance; }
+  .sub { color: var(--muted); margin: 4px 0 0; line-height: 1.5; }
+  h2 { font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin: 0; font-weight: 500; }
+  .notes { display: flex; flex-direction: column; gap: 8px; }
+  .note {
+    text-align: left; font: inherit; color: inherit; background: transparent; cursor: pointer;
+    border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; display: grid; gap: 4px;
+  }
+  .note strong { font-size: 14px; font-weight: 600; }
+  .note span { color: var(--muted); line-height: 1.55; }
+  .note[aria-current="true"] { border-color: var(--accent); background: var(--chip); }
+  .note[aria-current="true"] strong { color: var(--accent); }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 7px 4px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 500; font-size: 12px; }
+  td.num { font-family: var(--font-data); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  td.why { color: var(--muted); line-height: 1.5; }
+  .was { color: var(--muted); text-decoration: line-through; margin-right: 4px; }
+  ul.plain { margin: 0; padding-left: 18px; display: grid; gap: 5px; line-height: 1.5; }
+  ul.plain code { font-family: var(--font-data); font-size: 12px; }
+  @media (max-width: 860px) {
+    .app { grid-template-columns: 1fr; grid-template-rows: auto auto; }
+    #view { min-height: 58vh; }
+    aside { border-left: 0; border-top: 1px solid var(--line); overflow: visible; padding-left: max(16px, env(safe-area-inset-left, 0px)); }
+    body { display: block; }
+  }
+  @media (prefers-reduced-motion: reduce) { .note { transition: none; } }
+</style>
+
+<div class="app">
+  <div class="stage">
+    <div id="view"><div class="hint">拖曳旋轉・滾輪縮放・右鍵平移</div></div>
+    <div class="controls">
+      <label for="explode">爆炸視圖 <input id="explode" type="range" min="0" max="1" step="0.01" value="0"></label>
+      <label for="tilt">攝像頭俯仰 <input id="tilt" type="range" step="1" value="-15"><output id="tiltOut">-15°</output></label>
+      <div class="toggle" role="group" aria-label="顯示">
+        <button id="tAir" aria-pressed="true">氣流</button>
+        <button id="tVtx" aria-pressed="true">圖傳</button>
+        <button id="tFan" aria-pressed="true">風扇</button>
+      </div>
+    </div>
+  </div>
+  <aside>
+    <div>
+      <h1>Ascent Lite+ 圖傳散熱支架</h1>
+      <p class="sub">一件式，盡量壓低高度好塞進車殼：鎖在車子二樓板上，圖傳直接壓在板上、四根角柱框住它，風扇鎖在角柱頂上往下吹；前面掛攝像頭，後面是天線套管。點下面每一點，左邊會標出對應的部位。</p>
+    </div>
+    <section aria-label="高度">
+      <h2>裝好的高度（從二樓板頂面算）</h2>
+      <table>
+        <thead><tr><th>疊層</th><th>現在</th><th>上一版</th></tr></thead>
+        <tbody>
+          <tr><td>圖傳下的底板</td><td class="num">0</td><td class="num">1.5</td></tr>
+          <tr><td>圖傳</td><td class="num"><b data-v="vtx_h"></b></td><td class="num">8.0</td></tr>
+          <tr><td>氣隙</td><td class="num"><b data-v="air_gap"></b></td><td class="num">4.0</td></tr>
+          <tr><td>風扇蓋板</td><td class="num">0</td><td class="num">2.0</td></tr>
+          <tr><td>風扇（2507）</td><td class="num"><b data-v="fan_t"></b></td><td class="num">10.0</td></tr>
+          <tr><th>合計</th><td class="num"><b data-v="total"></b></td><td class="num">25.5</td></tr>
+        </tbody>
+      </table>
+      <p class="sub">攝像頭側板的頂端和風扇頂面差不多高，天線套管比風扇頂面還低，所以整體高度就是風扇頂面。</p>
+    </section>
+    <section class="notes" aria-label="設計思路">
+      <h2>設計思路</h2>
+      <button class="note" data-focus="air"><strong>氣流：往下吹，四面排出</strong><span>風扇直接坐在角柱頂上，正對圖傳頂面的散熱鰭片，中間沒有蓋板擋風。和圖傳之間留 <b data-v="air_gap"></b> mm 氣隙，熱風沿鰭片往四邊排出；四面只有角柱，出風不會被擋。</span></button>
+      <button class="note" data-focus="pads"><strong>風扇角墊：省掉一整片蓋板</strong><span>風扇的四個螺絲孔（20 × 20）落在圖傳上方，所以每根角柱頂端往內伸出一塊 <b data-v="pad_t"></b> mm 的角墊接住螺絲。角墊只在四個角，而且藏在氣隙的高度裡，和圖傳之間還有 1 mm，不另外佔高度。</span></button>
+      <button class="note" data-focus="vtx"><strong>圖傳：從底下放進去，直接壓在二樓板上</strong><span>圖傳下面不做底板，它和支架底面齊平，先從底下塞進框裡再把支架鎖上板，圖傳就被夾在鋁板和角墊之間（中間墊一片導熱墊更好，鋁板還能幫忙散熱）。圖傳有三面出線（攝像頭排線、V G T 電源線、IPEX 天線），所以四根角柱之間的底板全部挖成槽，每邊 20 mm 寬、3.5 mm 深：往上塞的時候插頭和線根往下折進槽裡，塞到底再往外拉平。四面都開槽，圖傳轉哪個方向放都行；外圈留一條 2 mm 的底板把四根角柱連起來。只有四個角的角柱（各包 2 mm）定位圖傳，口袋每邊 0.3 mm。</span></button>
+      <button class="note" data-focus="camera"><strong>攝像頭：兩片側板夾住，可調俯仰</strong><span>M2 螺絲穿過側板鎖進攝像頭側孔當轉軸，鬆開就能調角度。側板之間的底板挖空，模擬確認 <b data-v="tilt"></b> 都不會撞到。攝像頭和圖傳之間留 9 mm 給排線彎折。</span></button>
+      <button class="note" data-focus="antenna"><strong>天線套管：放低，不加高度</strong><span>套管在左後角柱後面，底部離板面約 5.5 mm，夾住天線最粗的那段，天線自己往上伸。開口朝後、比 3.5 mm 窄 0.7 mm，從後面壓進去就卡住；細的同軸線從套管下方彎出去接圖傳。</span></button>
+      <button class="note" data-focus="mount"><strong>裝到二樓板：中線兩顆 M2 穿槽</strong><span>二樓板中間只有 <b data-v="deck_w"></b> mm 寬，所以兩顆螺絲都放在中線上：兩顆都在出線槽外面：一顆在框後面（底板多長出一塊舌片），一顆在圖傳和攝像頭之間的排線空間裡。兩顆相距 <b data-v="spacing"></b> mm，比一條槽長，所以一顆穿前面的槽、一顆穿後面的槽，圖傳剛好壓在兩槽之間的實心段上。槽是長的，前後還能滑動調位置。螺絲柱 <b data-v="boss_t"></b> mm 高，比底板厚一點，壓得住螺絲頭；排線從它上面跨過去。</span></button>
+    </section>
+    <section aria-label="材料厚度">
+      <h2>材料厚度</h2>
+      <table>
+        <thead><tr><th>部位</th><th>厚度</th><th>為什麼是這個值</th></tr></thead>
+        <tbody>
+          <tr><td>框架底板</td><td class="num"><b data-v="floor"></b></td><td class="why">只剩圖傳四周一圈和攝像頭下方。</td></tr>
+          <tr><td>風扇角墊</td><td class="num"><b data-v="pad_t"></b></td><td class="why">風扇的自攻螺絲咬 2 mm。</td></tr>
+          <tr><td>角柱</td><td class="num"><b data-v="post"></b></td><td class="why">撐住風扇，並把圖傳框在中間。</td></tr>
+          <tr><td>二樓板螺絲柱</td><td class="num"><b data-v="boss_t"></b></td><td class="why">1.5 mm 底板直接被螺絲頭壓太薄。</td></tr>
+          <tr><td>攝像頭側板</td><td class="num"><b data-v="cheek_t"></b></td><td class="why">只承受攝像頭重量和螺絲夾緊力。</td></tr>
+          <tr><td>天線套管壁</td><td class="num"><b data-v="ant_wall"></b></td><td class="why">要有彈性才卡得進去。</td></tr>
+        </tbody>
+      </table>
+      <p class="sub">整個支架用料 <b data-v="volume"></b> cm³（兩件式時是 5.2 cm³）。</p>
+    </section>
+    <section aria-label="螺絲">
+      <h2>螺絲</h2>
+      <ul class="plain">
+        <li>M2×9 自攻 ×4：風扇鎖到角墊（7 mm 風扇＋2 mm 角墊；買不到 M2×9 就用 M2×8）</li>
+        <li>M2×4 ×2：攝像頭兩側轉軸</li>
+        <li>M2×8 ＋ 防鬆螺母 ×2：從上往下穿過螺絲柱和二樓板的槽，螺母在板子底下</li>
+      </ul>
+    </section>
+    <section aria-label="待量測">
+      <h2>印之前要量</h2>
+      <ul class="plain">
+        <li><code>CAM_PIVOT_BACK</code> 攝像頭側孔到機身背面，估 6 mm</li>
+        <li><code>CAM_L</code> 攝像頭機身深度（不含鏡頭），估 12 mm</li>
+        <li>攝像頭側孔是不是 M2（側板孔 Ø2.2）</li>
+        <li>14 × 12 是寬 × 高（目前假設寬 14 夾在側板間）</li>
+        <li>二樓板兩條槽的長度和間距（照片估約 27 / 22 mm、中間實心段約 12 mm；兩顆螺絲相距 <b data-v="spacing"></b> mm 要能各落在一條槽裡）</li>
+        <li>圖傳的插頭和線根有沒有落在離角 2 mm 以內（那裡是角柱，沒有槽）</li>
+        <li><code>DECK_T</code> 二樓板厚度，估 2 mm（只影響螺絲長度）</li>
+      </ul>
+    </section>
+  </aside>
+</div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+<script type="module">
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+
+const D = /*DATA*/null;
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+
+// Numbers from the model into the notes.
+const fmt = {
+  ...Object.fromEntries(Object.entries(D.thick).map(([k, v]) => [k, v.toFixed(1)])),
+  tilt: `${D.tilt[0]}° 到 +${D.tilt[1]}°`,
+  volume: D.volume.toFixed(1),
+  deck_w: D.deck.w.toFixed(0),
+  spacing: D.deck.spacing.toFixed(1),
+};
+document.querySelectorAll("[data-v]").forEach(el => { el.textContent = fmt[el.dataset.v]; });
+
+// ---- scene ------------------------------------------------------------------
+const host = document.getElementById("view");
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })  // viewport colour comes from the theme;
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+host.prepend(renderer.domElement);
+const scene = new THREE.Scene();
+const cam = new THREE.PerspectiveCamera(35, 1, 1, 2000);
+cam.up.set(0, 0, 1);
+cam.position.set(-70, -85, 70);
+const controls = new OrbitControls(cam, renderer.domElement);
+controls.target.set(0, 8, 10);
+controls.enableDamping = true;
+scene.add(new THREE.HemisphereLight(0xffffff, 0x445566, 1.6));
+const sun = new THREE.DirectionalLight(0xffffff, 1.4);
+sun.position.set(-40, -60, 120);
+scene.add(sun);
+
+function geometry(b64) {
+  const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.BufferAttribute(new Float32Array(bytes.buffer), 3));
+  g.computeVertexNormals();
+  return g;
+}
+const colors = { mount: 0xb9c3cd, vtx: 0x8a96a3, fan: 0x23282f, antenna: 0x1c1f24, camera: 0x2b3038, deck: 0xc9a27a };
+const meshes = {};
+for (const [name, b64] of Object.entries(D.parts)) {
+  const mat = new THREE.MeshStandardMaterial({ color: colors[name], roughness: 0.65, metalness: name === "vtx" || name === "deck" ? 0.4 : 0.05, flatShading: true, transparent: true });
+  meshes[name] = new THREE.Mesh(geometry(b64), mat);
+}
+const camPivot = new THREE.Group();
+camPivot.position.set(...D.pivot);
+camPivot.add(meshes.camera);
+scene.add(meshes.mount, meshes.vtx, meshes.fan, meshes.antenna, meshes.deck, camPivot);
+
+// Accent-coloured overlays for the notes that point at part of the mount.
+const accent = new THREE.MeshBasicMaterial({ color: css("--accent"), transparent: true, opacity: 0.35, depthWrite: false });
+const { pocket, outer } = D.half;
+const box = (x0, y0, z0, x1, y1, z1) => {
+  const m = new THREE.Mesh(new THREE.BoxGeometry(x1 - x0, y1 - y0, z1 - z0), accent);
+  m.position.set((x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2);
+  return m;
+};
+const marks = { vtx: new THREE.Group(), pads: new THREE.Group(), antenna: new THREE.Group(), mount: new THREE.Group() };
+for (const sx of [-1, 1]) for (const sy of [-1, 1]) {
+  const a = sx * (pocket - 2), b = sx * outer, c = sy * (pocket - 2), d = sy * outer;
+  marks.vtx.add(box(Math.min(a, b) - 0.2, Math.min(c, d) - 0.2, 0, Math.max(a, b) + 0.2, Math.max(c, d) + 0.2, D.z.fan + 0.2));
+}
+const { pad_in } = D.half;
+for (const sx of [-1, 1]) for (const sy of [-1, 1]) {
+  const xs = [sx * pad_in, sx * outer].sort((p, q) => p - q), ys = [sy * pad_in, sy * outer].sort((p, q) => p - q);
+  marks.pads.add(box(xs[0] - 0.2, ys[0] - 0.2, D.z.fan - D.thick.pad_t - 0.2, xs[1] + 0.2, ys[1] + 0.2, D.z.fan + 0.2));
+}
+const [ax, ay, az0, atop, ar] = D.antenna;
+marks.antenna.add(box(ax - 1.4, ay, 0, ax + 1.4, -outer, atop + 0.2));
+marks.antenna.add(box(ax - ar - 1.6, ay - ar - 1.6, az0 - 1.6, ax + ar + 1.6, ay + ar + 1.6, atop + 0.2));
+for (const [x, y, top, r] of D.screws) marks.mount.add(box(x - r - 0.3, y - r - 0.3, -D.deck.t - 2, x + r + 0.3, y + r + 0.3, top + 3));
+Object.values(marks).forEach(g => { g.visible = false; scene.add(g); });
+
+// ---- airflow ----------------------------------------------------------------
+const N = 220;
+const air = new THREE.Points(new THREE.BufferGeometry(), new THREE.PointsMaterial({ color: css("--air"), size: 1.3, transparent: true, opacity: 0.85, depthWrite: false }));
+const pos = new Float32Array(N * 3);
+air.geometry.setAttribute("position", new THREE.BufferAttribute(pos, 3));
+scene.add(air);
+const seeds = Array.from({ length: N }, () => {
+  const r = 4 + Math.random() * 7.5, a = Math.random() * Math.PI * 2;
+  return { x: r * Math.cos(a), y: r * Math.sin(a), t: Math.random() };
+});
+const zMid = (D.z.vtx_top + D.z.fan) / 2;
+function flowAt(s, t, lift) {
+  const top = D.z.fan_top + 8 + lift * 2;
+  if (t < 0.5) {  // down through the fan
+    const k = t / 0.5;
+    return [s.x, s.y, top + (zMid - top) * k];
+  }
+  const k = (t - 0.5) / 0.5;  // out along the gap, towards the nearer side
+  const big = Math.max(Math.abs(s.x), Math.abs(s.y));
+  const reach = (outer + 10) / big;
+  return [s.x * (1 + (reach - 1) * k), s.y * (1 + (reach - 1) * k), zMid];
+}
+
+// ---- controls ---------------------------------------------------------------
+const explode = document.getElementById("explode");
+const tilt = document.getElementById("tilt");
+const tiltOut = document.getElementById("tiltOut");
+tilt.min = D.tilt[0]; tilt.max = D.tilt[1]; tilt.value = -15;
+function press(id, on) { const b = document.getElementById(id); b.setAttribute("aria-pressed", on); return on; }
+let showAir = true;
+document.getElementById("tAir").onclick = () => { showAir = press("tAir", !showAir); air.visible = showAir; };
+document.getElementById("tVtx").onclick = e => { meshes.vtx.visible = press("tVtx", !meshes.vtx.visible); };
+document.getElementById("tFan").onclick = e => { meshes.fan.visible = press("tFan", !meshes.fan.visible); };
+
+function layout() {
+  const e = +explode.value;
+  meshes.fan.position.z = e * 18;
+  meshes.vtx.position.z = -e * 14;  // the VTX goes in from below
+  meshes.deck.position.z = -e * 26;
+  camPivot.rotation.x = THREE.MathUtils.degToRad(+tilt.value);
+  tiltOut.textContent = `${tilt.value > 0 ? "+" : ""}${tilt.value}°`;
+}
+explode.oninput = layout;
+tilt.oninput = layout;
+
+// Notes: dim everything but what the note is about.
+const focusParts = { air: ["fan"], pads: ["fan"], vtx: ["vtx"], camera: ["camera"], antenna: ["antenna"], mount: [] };
+const views = {
+  air: [[-55, -75, 80], [0, 0, 10]], pads: [[-45, -55, 75], [0, 0, 9]], vtx: [[-55, -60, -45], [0, 2, 4]],
+  camera: [[75, 70, 35], [0, 22, 8]], antenna: [[-60, -95, 45], [-12, -16, 10]], mount: [[-70, -45, 40], [0, 2, 0]],
+};
+let tween = null;
+function select(key) {
+  document.querySelectorAll(".note").forEach(n => n.setAttribute("aria-current", n.dataset.focus === key));
+  for (const [name, m] of Object.entries(meshes)) m.material.opacity = (focusParts[key] || []).includes(name) || name === "mount" ? 1 : 0.22;
+  if (key === "camera" || key === "air") meshes.mount.material.opacity = 0.55;
+  for (const [k, g] of Object.entries(marks)) g.visible = k === key;
+  air.visible = showAir && (key === "air" || !key);
+  if (key === "camera") { explode.value = 0; layout(); }
+  if (key === "pads" && +explode.value < 0.4) { explode.value = 0.6; layout(); }
+  const v = views[key];
+  if (v) tween = { from: cam.position.clone(), fromT: controls.target.clone(), to: new THREE.Vector3(...v[0]), toT: new THREE.Vector3(...v[1]), t: 0 };
+}
+document.querySelectorAll(".note").forEach(n => n.addEventListener("click", () => select(n.dataset.focus)));
+
+// ---- loop -------------------------------------------------------------------
+function resize() {
+  const w = host.clientWidth, h = host.clientHeight;
+  renderer.setSize(w, h, false);
+  cam.aspect = w / h;
+  cam.updateProjectionMatrix();
+}
+new ResizeObserver(resize).observe(host);
+const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+let last = performance.now();
+renderer.setAnimationLoop(now => {
+  const dt = Math.min((now - last) / 1000, 0.05);
+  last = now;
+  if (tween) {
+    tween.t = Math.min(1, tween.t + dt * (still ? 99 : 1.8));
+    const k = 1 - Math.pow(1 - tween.t, 3);
+    cam.position.lerpVectors(tween.from, tween.to, k);
+    controls.target.lerpVectors(tween.fromT, tween.toT, k);
+    if (tween.t >= 1) tween = null;
+  }
+  if (air.visible) {
+    const lift = +explode.value * 18;
+    seeds.forEach((s, i) => {
+      if (!still) s.t = (s.t + dt * 0.45) % 1;
+      pos.set(flowAt(s, s.t, lift), i * 3);
+    });
+    air.geometry.attributes.position.needsUpdate = true;
+  }
+  controls.update();
+  renderer.render(scene, cam);
+});
+layout();
+select("air");
+</script>

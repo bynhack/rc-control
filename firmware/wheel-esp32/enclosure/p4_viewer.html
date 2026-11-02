@@ -1,0 +1,357 @@
+<title>P4 桌面座組裝</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+  /* Layout: CAD inspector, like the other enclosure pages. 3D viewport with the assembly controls on the left, steps and checks on the right; stacks on phones. */
+  :root {
+    --bg: #e9edf1;
+    --panel: #f8fafb;
+    --line: #d3dae2;
+    --fg: #16202b;
+    --muted: #5a6776;
+    --accent: #d9732b;
+    --viewport: #dfe5eb;
+    --chip: #eef2f5;
+    --ok: #1e8a52;
+    --bad: #c93636;
+    --font-ui: "IBM Plex Sans", "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", system-ui, sans-serif;
+    --font-data: "IBM Plex Mono", "SF Mono", ui-monospace, Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #10151b; --panel: #161c24; --line: #263040; --fg: #e4e9ef; --muted: #8b98a8;
+      --accent: #f0904a; --viewport: #0c1116; --chip: #1d2530; --ok: #4fcf8a; --bad: #ff6b6b;
+      color-scheme: dark;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #10151b; --panel: #161c24; --line: #263040; --fg: #e4e9ef; --muted: #8b98a8;
+    --accent: #f0904a; --viewport: #0c1116; --chip: #1d2530; --ok: #4fcf8a; --bad: #ff6b6b;
+    color-scheme: dark;
+  }
+  html, body { height: 100%; }
+  body { background: var(--bg); color: var(--fg); font-family: var(--font-ui); font-size: 14px; display: flex; flex-direction: column; }
+  .app { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) 380px; min-height: 0; }
+  .stage { position: relative; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+  #view { flex: 1; min-height: 320px; background: var(--viewport); position: relative; }
+  #view canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+  .hint { position: absolute; left: max(12px, env(safe-area-inset-left, 0px)); bottom: 10px; color: var(--muted); font-size: 12px; pointer-events: none; }
+  .now {
+    position: absolute; left: max(12px, env(safe-area-inset-left, 0px)); top: 12px; right: 12px; pointer-events: none;
+    display: grid; gap: 2px; max-width: 520px;
+  }
+  .now b { font-size: 15px; font-weight: 600; }
+  .now span { color: var(--muted); line-height: 1.5; }
+  .controls {
+    display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center;
+    padding-block: 12px; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: 16px;
+    border-top: 1px solid var(--line); background: var(--panel);
+  }
+  .controls label { display: flex; align-items: center; gap: 8px; color: var(--muted); font-size: 13px; }
+  .controls input[type=range] { width: 130px; accent-color: var(--accent); }
+  #step { width: 200px; }
+  .controls output { font-family: var(--font-data); font-variant-numeric: tabular-nums; color: var(--fg); min-width: 3.2em; }
+  .btn {
+    font: inherit; font-size: 13px; color: var(--fg); background: var(--chip); border: 1px solid var(--line);
+    border-radius: 6px; padding: 5px 10px; cursor: pointer;
+  }
+  .btn[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); }
+  .btn:focus-visible, .stepbtn:focus-visible, .part input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .group { display: flex; gap: 6px; }
+  aside {
+    border-left: 1px solid var(--line); background: var(--panel); overflow-y: auto; min-height: 0;
+    padding-block: 18px 28px; padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-left: 18px;
+    display: flex; flex-direction: column; gap: 20px;
+  }
+  h1 { font-size: 19px; font-weight: 600; margin: 0; text-wrap: balance; }
+  .sub { color: var(--muted); margin: 4px 0 0; line-height: 1.55; }
+  h2 { font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin: 0 0 8px; font-weight: 500; }
+  ol.steps { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+  .stepbtn {
+    width: 100%; text-align: left; font: inherit; color: inherit; background: transparent; cursor: pointer;
+    border: 1px solid transparent; border-radius: 6px; padding: 6px 8px; display: grid; grid-template-columns: 2.2em 1fr; gap: 6px;
+  }
+  .stepbtn .k { font-family: var(--font-data); color: var(--muted); font-variant-numeric: tabular-nums; }
+  .stepbtn[aria-current="true"] { border-color: var(--accent); background: var(--chip); }
+  .stepbtn[aria-current="true"] .k, .stepbtn[aria-current="true"] .t { color: var(--accent); }
+  .stepbtn.done .t { color: var(--muted); }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 6px 4px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font-weight: 500; font-size: 12px; }
+  td.num { font-family: var(--font-data); font-variant-numeric: tabular-nums; white-space: nowrap; text-align: right; }
+  .pill { font-size: 12px; border-radius: 999px; padding: 1px 8px; border: 1px solid currentColor; white-space: nowrap; }
+  .pill.ok { color: var(--ok); }
+  .pill.bad { color: var(--bad); }
+  .parts { display: grid; gap: 4px; }
+  .part { display: flex; align-items: center; gap: 8px; cursor: pointer; }
+  .part i { width: 12px; height: 12px; border-radius: 3px; border: 1px solid var(--line); flex: none; }
+  .part input { accent-color: var(--accent); }
+  @media (max-width: 860px) {
+    .app { grid-template-columns: 1fr; grid-template-rows: auto auto; }
+    #view { min-height: 62vh; }
+    aside { border-left: 0; border-top: 1px solid var(--line); overflow: visible; padding-left: max(16px, env(safe-area-inset-left, 0px)); }
+    body { display: block; }
+    #step { width: 150px; }
+  }
+</style>
+
+<div class="app">
+  <div class="stage">
+    <div id="view">
+      <div class="now" aria-live="polite"><b id="nowTitle"></b><span id="nowText"></span></div>
+      <div class="hint">拖曳旋轉・滾輪縮放・右鍵平移</div>
+    </div>
+    <div class="controls">
+      <div class="group">
+        <button class="btn" id="prev" aria-label="上一步">◀</button>
+        <button class="btn" id="play">播放組裝</button>
+        <button class="btn" id="next" aria-label="下一步">▶</button>
+      </div>
+      <label for="step">進度 <input id="step" type="range" min="0" step="0.01"><output id="stepOut"></output></label>
+      <label for="explode">爆炸 <input id="explode" type="range" min="0" max="1" step="0.01" value="0"></label>
+      <label for="cut">剖切 <input id="cut" type="range" step="0.5"><output id="cutOut"></output></label>
+      <div class="group" role="group" aria-label="視角">
+        <button class="btn" data-view="back">背面</button>
+        <button class="btn" data-view="front">正面</button>
+        <button class="btn" data-view="side">側面</button>
+        <button class="btn" data-view="below">底下</button>
+      </div>
+    </div>
+  </div>
+  <aside>
+    <div>
+      <h1>P4 桌面座組裝模擬</h1>
+      <p class="sub">底座、螢幕托盤、MULTI 面板都是 p4_case.py 直接產生的模型，和要印的 STL 一模一樣；螺絲、螺母、插頭、天線是示意用的替身。拖進度條或點下面的步驟看每一步怎麼裝，剖切可以從右邊把模型切開看裡面。</p>
+    </div>
+    <section aria-label="組裝步驟">
+      <h2>組裝步驟</h2>
+      <ol class="steps" id="steps"></ol>
+    </section>
+    <section aria-label="干涉檢查">
+      <h2>干涉檢查</h2>
+      <table>
+        <thead><tr><th>兩個零件</th><th class="num">重疊 mm³</th><th></th></tr></thead>
+        <tbody id="checks"></tbody>
+      </table>
+      <p class="sub">重疊 0 代表模型裡互不相撞。替身尺寸大多是估的，實物有差就以實物為準。</p>
+    </section>
+    <section aria-label="零件">
+      <h2>顯示的零件</h2>
+      <div class="parts" id="parts"></div>
+    </section>
+  </aside>
+</div>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+<script type="module">
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+
+const D = /*DATA*/null;
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+
+const STEPS = [
+  ["底座放到 MOZA 上", "底座是一整條型材：外殼（底板、背板、頂面、斜面、前面板）加上斜面下的倒 V，倒 V 和底板組成三角形撐住螢幕。"],
+  ["鎖到 MOZA", "2 顆 M3×6 內六角從兩端開口放到底板的孔上，2.5 mm 六角扳手從斜面的窗口伸下去，鎖進 MOZA 頂面的兩個 M3 孔（相距 70 mm）。要在裝托盤之前鎖。"],
+  ["塞螺母", "8 顆 M2.5 螺母塞進菱形墊塊上的六角槽：斜面下 4 顆、背板內側 4 顆，從兩端開口伸手進去。"],
+  ["螢幕托盤靠上斜面", "托盤背面貼著斜面，下緣兩個 12-pin 開孔在斜面下方，插頭往後有 20 mm 以上的空間。"],
+  ["鎖托盤", "4 顆 M2.5×10 沉頭從托盤裡面往下鎖進斜面下的螺母。要在 P4 主板放進去之前鎖。"],
+  ["裝 P4", "P4 主板連螢幕放進托盤，用它自己的銅柱從托盤背面鎖。"],
+  ["MULTI 掛上面板", "高頻頭兩顆自攻螺絲鎖在面板的柱子上，下緣卡進兩個卡勾。"],
+  ["面板裝到背板", "面板連同 MULTI 從後面把板子穿進背板的窗口。"],
+  ["鎖面板", "4 顆 M2.5×8 沉頭從外面鎖進背板內側墊塊裡的螺母。"],
+  ["裝 SMA 和天線", "兩個 SMA 座從頂面兩端的孔穿出來，螺母鎖在頂面上：一支給 MULTI，一支給 Nano。"],
+  ["放 Nano", "ELRS Nano 從開口端放進倒 V 裡面的底板上，用雙面膠固定，天線線從斜撐的菱形窗口接到同一端的 SMA。"],
+  ["裝喇叭", "先鎖好 MOZA 的兩顆 M3（喇叭會蓋住它們）。喇叭面朝你，從底座左端（看著螢幕）的開口滑進前面板後的槽，推到底碰到右端的擋塊；左端在下面那條托邊的端面鎖 1 顆 M2.5×8 自攻加墊片擋住它。"],
+  ["插線", "兩個 12-pin、兩條 Type-C 和 MULTI 的排針插頭；線從倒 V 的菱形窗口穿到後面。"],
+];
+const LABELS = {
+  "tray x board": "托盤 × P4", "tray x stand": "托盤 × 底座", "board x stand": "P4 × 底座",
+  "stand x sma": "底座 × SMA", "cover x sma": "面板 × SMA", "tray x sma": "托盤 × 底座 SMA",
+  "tray x its sma": "托盤 × 托盤 SMA", "board x tray sma": "P4 × 托盤 SMA", "stand x cover": "底座 × 面板",
+  "cover x multi": "面板 × MULTI", "stand x multi + plugs": "底座 × MULTI 和插頭", "tray x multi": "托盤 × MULTI",
+  "stand x speaker": "底座 × 喇叭", "stand x M3 screws": "底座 × M3 螺絲", "stand x Nano": "底座 × Nano",
+  "speaker x M3 screws": "喇叭 × M3 螺絲", "stand x 12-pin plugs": "底座 × 12-pin 插頭（往後 20 mm）",
+  "speaker x 12-pin plugs": "喇叭 × 12-pin 插頭",
+};
+
+// ---- scene ------------------------------------------------------------------
+const host = document.getElementById("view");
+const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.localClippingEnabled = true;
+host.prepend(renderer.domElement);
+const scene = new THREE.Scene();
+const cam = new THREE.PerspectiveCamera(32, 1, 1, 5000);
+cam.up.set(0, 0, 1);
+const controls = new OrbitControls(cam, renderer.domElement);
+controls.enableDamping = true;
+scene.add(new THREE.HemisphereLight(0xffffff, 0x4a5662, 1.5));
+const sun = new THREE.DirectionalLight(0xffffff, 1.5);
+sun.position.set(120, 260, 300);
+scene.add(sun);
+const fill = new THREE.DirectionalLight(0xffffff, 0.6);
+fill.position.set(-200, -220, 120);
+scene.add(fill);
+
+const clip = new THREE.Plane(new THREE.Vector3(-1, 0, 0), 1e4);
+function geometry(b64) {
+  const bytes = Uint8Array.from(atob(b64), c => c.charCodeAt(0));
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.BufferAttribute(new Float32Array(bytes.buffer), 3));
+  g.computeVertexNormals();
+  return g;
+}
+const accent = new THREE.Color(css("--accent"));
+const parts = D.parts.map(p => {
+  const mat = new THREE.MeshStandardMaterial({
+    color: p.color, roughness: 0.62, metalness: ["screws", "cscrews", "nuts"].includes(p.name) ? 0.5 : 0.05,
+    flatShading: true, side: THREE.DoubleSide, transparent: true, clippingPlanes: p.name === "desk" ? [] : [clip],
+  });
+  const mesh = new THREE.Mesh(geometry(p.tris), mat);
+  scene.add(mesh);
+  return { ...p, mesh, mat, shown: true, first: p.moves.length ? p.moves[0][0] : -1 };
+});
+
+// ---- assembly ---------------------------------------------------------------
+const stepIn = document.getElementById("step"), stepOut = document.getElementById("stepOut");
+const explode = document.getElementById("explode");
+const cut = document.getElementById("cut"), cutOut = document.getElementById("cutOut");
+stepIn.max = STEPS.length;
+stepIn.value = STEPS.length;  // opens assembled
+const xs = parts.filter(p => p.name !== "desk").map(p => new THREE.Box3().setFromObject(p.mesh));
+const xMin = Math.floor(Math.min(...xs.map(b => b.min.x))) - 1, xMax = Math.ceil(Math.max(...xs.map(b => b.max.x))) + 1;
+cut.min = xMin; cut.max = xMax; cut.value = xMax;
+
+function layout() {
+  const p = +stepIn.value, e = +explode.value;
+  const cur = Math.min(Math.floor(p), STEPS.length - 1);
+  for (const part of parts) {
+    const off = new THREE.Vector3();
+    for (const [k, o] of part.moves) {
+      const left = 1 - THREE.MathUtils.clamp(p - k, 0, 1);
+      off.add(new THREE.Vector3(...o).multiplyScalar(left + e));
+    }
+    part.mesh.position.copy(off);
+    part.mesh.visible = part.shown && (part.first < 0 || p > part.first || (p === 0 && part.first === 0 && false));
+    const active = p < STEPS.length && part.moves.some(([k]) => k === cur);
+    part.mat.emissive.copy(active ? accent : new THREE.Color(0));
+    part.mat.emissiveIntensity = active ? 0.35 : 0;
+  }
+  stepOut.textContent = p >= STEPS.length ? "完成" : `${cur + 1}/${STEPS.length}`;
+  const [t, d] = p >= STEPS.length ? ["裝好了", "拖進度條或點右邊的步驟，看每一步怎麼裝。"] : STEPS[cur];
+  document.getElementById("nowTitle").textContent = p >= STEPS.length ? t : `${cur + 1}. ${t}`;
+  document.getElementById("nowText").textContent = d;
+  document.querySelectorAll(".stepbtn").forEach((b, i) => {
+    b.setAttribute("aria-current", p < STEPS.length && i === cur);
+    b.classList.toggle("done", i < Math.floor(p));
+  });
+  clip.constant = +cut.value;
+  cutOut.textContent = +cut.value >= xMax ? "不切" : `x ${(+cut.value).toFixed(0)}`;
+}
+
+const list = document.getElementById("steps");
+STEPS.forEach(([t], i) => {
+  const li = document.createElement("li");
+  li.innerHTML = `<button class="stepbtn"><span class="k">${String(i + 1).padStart(2, "0")}</span><span class="t"></span></button>`;
+  li.querySelector(".t").textContent = t;
+  li.querySelector("button").onclick = () => { stop(); animateTo(i + 1, i + 0.0); };
+  list.append(li);
+});
+
+// Step buttons and play.
+let anim = null;
+function animateTo(to, from = +stepIn.value) { anim = { from, to, t: 0 }; }
+function stop() { playing = false; document.getElementById("play").setAttribute("aria-pressed", false); }
+let playing = false;
+document.getElementById("play").onclick = () => {
+  playing = !playing;
+  document.getElementById("play").setAttribute("aria-pressed", playing);
+  if (playing) { if (+stepIn.value >= STEPS.length) stepIn.value = 0; animateTo(Math.floor(+stepIn.value) + 1); }
+};
+document.getElementById("next").onclick = () => { stop(); animateTo(Math.min(STEPS.length, Math.floor(+stepIn.value) + 1)); };
+document.getElementById("prev").onclick = () => { stop(); animateTo(Math.max(0, Math.ceil(+stepIn.value) - 1)); };
+stepIn.oninput = () => { stop(); anim = null; layout(); };
+explode.oninput = layout;
+cut.oninput = layout;
+
+// Checks.
+const tb = document.getElementById("checks");
+for (const [k, v] of Object.entries(D.checks)) {
+  const ok = v <= 0.01;
+  const tr = document.createElement("tr");
+  tr.innerHTML = `<td></td><td class="num">${Math.max(0, v).toFixed(2)}</td><td><span class="pill ${ok ? "ok" : "bad"}">${ok ? "不相撞" : "相撞"}</span></td>`;
+  tr.firstChild.textContent = LABELS[k] || k;
+  tb.append(tr);
+}
+
+// Part toggles.
+const box = document.getElementById("parts");
+for (const part of parts) {
+  const id = `show-${part.name}`;
+  const row = document.createElement("label");
+  row.className = "part";
+  row.htmlFor = id;
+  row.innerHTML = `<input type="checkbox" id="${id}" checked><i></i><span></span>`;
+  row.querySelector("i").style.background = `#${part.color.toString(16).padStart(6, "0")}`;
+  row.querySelector("span").textContent = part.label;
+  row.querySelector("input").onchange = e => { part.shown = e.target.checked; layout(); };
+  box.append(row);
+}
+
+// Views.
+const C = new THREE.Vector3(...D.centre);
+const VIEWS = {
+  back: [[330, 300, 210], C], front: [[-160, -330, 170], C], side: [[420, 30, 90], C], below: [[260, 220, -140], C],
+};
+let tween = null;
+document.querySelectorAll("[data-view]").forEach(b => b.onclick = () => {
+  const [pos, tgt] = VIEWS[b.dataset.view];
+  tween = { from: cam.position.clone(), fromT: controls.target.clone(), to: new THREE.Vector3(...pos), toT: tgt.clone(), t: 0 };
+});
+cam.position.set(...VIEWS.back[0]);
+controls.target.copy(C);
+
+// ---- loop -------------------------------------------------------------------
+function resize() {
+  const w = host.clientWidth, h = host.clientHeight;
+  renderer.setSize(w, h, false);
+  cam.aspect = w / h;
+  cam.updateProjectionMatrix();
+}
+new ResizeObserver(resize).observe(host);
+const still = matchMedia("(prefers-reduced-motion: reduce)").matches;
+let last = performance.now();
+renderer.setAnimationLoop(now => {
+  const dt = Math.min((now - last) / 1000, 0.05);
+  last = now;
+  if (anim) {
+    anim.t = Math.min(1, anim.t + dt * (still ? 99 : 1 / Math.max(0.4, Math.abs(anim.to - anim.from) * 0.9)));
+    const k = 1 - Math.pow(1 - anim.t, 2);
+    stepIn.value = anim.from + (anim.to - anim.from) * k;
+    layout();
+    if (anim.t >= 1) {
+      anim = null;
+      if (playing && +stepIn.value < STEPS.length) setTimeout(() => { if (playing) animateTo(+stepIn.value + 1); }, 450);
+      else stop();
+    }
+  }
+  if (tween) {
+    tween.t = Math.min(1, tween.t + dt * (still ? 99 : 1.8));
+    const k = 1 - Math.pow(1 - tween.t, 3);
+    cam.position.lerpVectors(tween.from, tween.to, k);
+    controls.target.lerpVectors(tween.fromT, tween.toT, k);
+    if (tween.t >= 1) tween = null;
+  }
+  controls.update();
+  renderer.render(scene, cam);
+});
+layout();
+</script>

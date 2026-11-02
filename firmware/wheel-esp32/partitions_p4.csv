@@ -1,0 +1,6 @@
+# ESP32-P4 7B (32 MB flash): same nvs and phy_init as "single app large",
+# so saved settings survive, with room for the dashboard images.
+# Name,   Type, SubType, Offset,  Size
+nvs,      data, nvs,     0x9000,  0x6000,
+phy_init, data, phy,     0xf000,  0x1000,
+factory,  app,  factory, 0x10000, 16M,
