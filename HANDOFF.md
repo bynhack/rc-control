@@ -78,7 +78,7 @@ EP2 手焊，三選一：焊盤朝上緣、焊盤朝下（天線朝上緣），�
 **不在 git 裡，要手動處理：**
 
 - 完整的歷史和決策已整理在 [docs/project-notes.md](docs/project-notes.md)。Claude 的原始筆記在 `~/.claude/projects/` 下，新電腦不需要；綁定短語沒有寫進文件，請從接收機設定取得。
-- `third_party/aviateur` 是 submodule：`git submodule update --init --recursive`。
+- `third_party/aviateur` 是 submodule，只需要它和底下的 `3rd/devourer`，指令見下一節。**不要用 `--recursive`**：`devourer/reference/rtl8852cu` 記錄的提交在遠端已不存在，會卡住，而且 `reference/*` 不參與編譯。
 
 ## 取得程式碼與重新產生
 
@@ -86,7 +86,8 @@ EP2 手焊，三選一：焊盤朝上緣、焊盤朝下（天線朝上緣），�
 git clone https://github.com/bynhack/rc-control.git
 cd rc-control
 git checkout feat/esp32-wheel
-git submodule update --init --recursive
+git submodule update --init third_party/aviateur
+git -C third_party/aviateur submodule update --init 3rd/devourer
 ```
 
 重新佈線並輸出（在 `hardware/x2201-carrier-v8/`）：
