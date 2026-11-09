@@ -1,0 +1,181 @@
+{
+  "board": {
+    "design_settings": {
+      "rules": {
+        "min_clearance": 0.15,
+        "min_track_width": 0.15,
+        "min_via_diameter": 0.45,
+        "min_via_annular_width": 0.1,
+        "min_through_hole_diameter": 0.3,
+        "min_copper_edge_clearance": 0.3,
+        "min_hole_clearance": 0.25,
+        "min_hole_to_hole": 0.25,
+        "solder_mask_to_copper_clearance": 0.0,
+        "min_silk_clearance": 0.0
+      },
+      "defaults": {},
+      "rule_severities": {}
+    }
+  },
+  "net_settings": {
+    "classes": [
+      {
+        "name": "Default",
+        "track_width": 0.2,
+        "clearance": 0.15,
+        "via_diameter": 0.5,
+        "via_drill": 0.3,
+        "microvia_diameter": 0.3,
+        "microvia_drill": 0.1,
+        "diff_pair_width": 0.2,
+        "diff_pair_gap": 0.25,
+        "diff_pair_via_gap": 0.25,
+        "wire_width": 6,
+        "bus_width": 12,
+        "line_style": 0,
+        "pcb_color": "rgba(0, 0, 0, 0.000)",
+        "schematic_color": "rgba(0, 0, 0, 0.000)",
+        "priority": 2147483647
+      },
+      {
+        "name": "PWR",
+        "track_width": 0.5,
+        "clearance": 0.2,
+        "via_diameter": 0.6,
+        "via_drill": 0.3,
+        "microvia_diameter": 0.3,
+        "microvia_drill": 0.1,
+        "diff_pair_width": 0.2,
+        "diff_pair_gap": 0.25,
+        "diff_pair_via_gap": 0.25,
+        "wire_width": 6,
+        "bus_width": 12,
+        "line_style": 0,
+        "pcb_color": "rgba(0, 0, 0, 0.000)",
+        "schematic_color": "rgba(0, 0, 0, 0.000)",
+        "priority": 0
+      },
+      {
+        "name": "MID",
+        "track_width": 0.35,
+        "clearance": 0.15,
+        "via_diameter": 0.5,
+        "via_drill": 0.3,
+        "microvia_diameter": 0.3,
+        "microvia_drill": 0.1,
+        "diff_pair_width": 0.2,
+        "diff_pair_gap": 0.25,
+        "diff_pair_via_gap": 0.25,
+        "wire_width": 6,
+        "bus_width": 12,
+        "line_style": 0,
+        "pcb_color": "rgba(0, 0, 0, 0.000)",
+        "schematic_color": "rgba(0, 0, 0, 0.000)",
+        "priority": 0
+      },
+      {
+        "name": "RF",
+        "track_width": 0.3,
+        "clearance": 0.2,
+        "via_diameter": 0.5,
+        "via_drill": 0.3,
+        "microvia_diameter": 0.3,
+        "microvia_drill": 0.1,
+        "diff_pair_width": 0.2,
+        "diff_pair_gap": 0.25,
+        "diff_pair_via_gap": 0.25,
+        "wire_width": 6,
+        "bus_width": 12,
+        "line_style": 0,
+        "pcb_color": "rgba(0, 0, 0, 0.000)",
+        "schematic_color": "rgba(0, 0, 0, 0.000)",
+        "priority": 0
+      }
+    ],
+    "meta": {
+      "version": 4
+    },
+    "netclass_patterns": [
+      {
+        "netclass": "PWR",
+        "pattern": "VBAT"
+      },
+      {
+        "netclass": "PWR",
+        "pattern": "VTX"
+      },
+      {
+        "netclass": "MID",
+        "pattern": "5V"
+      },
+      {
+        "netclass": "MID",
+        "pattern": "VIN"
+      },
+      {
+        "netclass": "MID",
+        "pattern": "3V3"
+      },
+      {
+        "netclass": "MID",
+        "pattern": "3V3R"
+      },
+      {
+        "netclass": "MID",
+        "pattern": "VBUS"
+      },
+      {
+        "netclass": "MID",
+        "pattern": "LEDA"
+      },
+      {
+        "netclass": "MID",
+        "pattern": "LEDK"
+      },
+      {
+        "netclass": "MID",
+        "pattern": "SX_DCC"
+      },
+      {
+        "netclass": "MID",
+        "pattern": "SX_SW"
+      },
+      {
+        "netclass": "RF",
+        "pattern": "RXC_RF"
+      },
+      {
+        "netclass": "RF",
+        "pattern": "RXC_ANT"
+      },
+      {
+        "netclass": "RF",
+        "pattern": "SX_RF"
+      },
+      {
+        "netclass": "RF",
+        "pattern": "PA_IO"
+      },
+      {
+        "netclass": "RF",
+        "pattern": "PA_ANT"
+      },
+      {
+        "netclass": "RF",
+        "pattern": "ELRS_ANT"
+      },
+      {
+        "netclass": "RF",
+        "pattern": "B_RF"
+      },
+      {
+        "netclass": "RF",
+        "pattern": "B_ANT"
+      }
+    ]
+  },
+  "meta": {
+    "filename": "x2201-carrier-v5.kicad_pro",
+    "version": 3
+  }
+}

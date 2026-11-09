@@ -8,6 +8,7 @@
 #include "freertos/FreeRTOS.h"
 #include "nvs.h"
 #include "nvs_flash.h"
+#include "wheel.h"
 
 static const char *TAG = "radio";
 
@@ -20,6 +21,7 @@ static const char *TAG = "radio";
 #define DEFAULT_KMH 30
 #define NVS_KEY_FFB "ffb"
 #define NVS_KEY_FLIP "flip"
+#define NVS_KEY_WHEEL "wheel"
 #define NVS_KEY_DUPLEX "elrs2"
 #define NVS_KEY_VOL "vol"
 #define NVS_KEY_SOUND "snd"
@@ -408,6 +410,31 @@ int ui_topspeed_get(void) {
 void ui_topspeed_set(int kmh) {
     s_garage.cars[s_garage.active].top_kmh = (uint8_t)kmh;
     save_garage();
+}
+
+static int s_wheel = -1;
+
+int ui_wheel_get(void) {
+    if (s_wheel < 0) {
+        uint8_t v = WHEEL_NONE;
+        nvs_handle_t h;
+        if (nvs_open(NVS_NS, NVS_READONLY, &h) == ESP_OK) {
+            nvs_get_u8(h, NVS_KEY_WHEEL, &v);
+            nvs_close(h);
+        }
+        s_wheel = v < WHEEL_KINDS ? v : WHEEL_NONE;
+    }
+    return s_wheel;
+}
+
+void ui_wheel_set(int kind) {
+    s_wheel = kind;
+    nvs_handle_t h;
+    if (nvs_open(NVS_NS, NVS_READWRITE, &h) == ESP_OK) {
+        nvs_set_u8(h, NVS_KEY_WHEEL, (uint8_t)kind);
+        nvs_commit(h);
+        nvs_close(h);
+    }
 }
 
 // Read often (ffb.c polls it), so cached after the first read.

@@ -8,14 +8,14 @@ Drive RC cars with a sim-racing wheel and pedals. Plug the wheel into a 7" ESP32
 
 ## Features
 
-- **Standalone wheel controller.** Built on the ESP32-P4 7" touch board with a MOZA R5 wheel base.
+- **Standalone wheel controller.** Built on the ESP32-P4 7" touch board with a MOZA R5 or Thrustmaster T300RS wheel base, picked on the screen.
 - **Three ways to reach the car**, chosen per car:
   - ExpressLRS (CRSF)
   - a 4-in-1 MULTI module, over its serial protocol or as PPM
   - the toy car's own stock remote, with its pots driven by a DAC
 - **Per-car handling** that every radio goes through. You set the steering range, expo, steering and throttle dead bands, trim, end points and reverse on the wheel itself.
 - **Driving like a car.** Ignition, gears R N 1 2 3, coasting, a real brake, and an automatic brake-then-reverse sequence for the ESC.
-- **USB PID force feedback** on the MOZA base. Centring gets stronger with speed, and a soft stop marks the steering lock.
+- **Force feedback** on both bases (USB PID on the MOZA, Thrustmaster's protocol on the T300). Centring gets stronger with speed, and a soft stop marks the steering lock.
 - **Dashboard.** Two instrument clusters with Simplified and Traditional Chinese text, six car profiles, and engine sound synthesised live on the board's speaker.
 - **Desktop app** (Rust, optional). Drives an ELRS module from a PC and shows OpenIPC FPV video from a USB Wi-Fi adapter.
 - **3D-printable parts and a car carrier board.** A stand for the MOZA base, mounts for the car, and a KiCad schematic.

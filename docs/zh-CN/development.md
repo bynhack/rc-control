@@ -9,17 +9,17 @@
 | 文件 | 作用 |
 |---|---|
 | `main.c` | 开机、USB 主机，把方向盘数据交给驾驶模型 |
-| `wheel.c` | 按 VID:PID 解析方向盘底座的 HID 报告 |
+| `wheel.c` | 解析方向盘底座的 HID 报告（MOZA R5、T300RS） |
 | `control.c` | 驾驶模型和所有安全规则；发射端只读 `control_output()` |
 | `radio.c` | 车辆、NVS 里的设置，以及所有发射方式都要经过的操控层 |
 | `crsf.c` | ExpressLRS（CRSF）发送 |
 | `multi.c` | 四合一 MULTI 发送，串口或 PPM |
 | `remote.c` | 经 MCP4728 DAC 控制玩具遥控器，以及串口命令 |
-| `ffb.c` | 力回馈（USB PID） |
+| `ffb.c` | 力回馈（MOZA 用 USB PID，T300 用 Thrustmaster 自己的协议） |
 | `sound.c` | 引擎声浪合成 |
 | `display_p4.c`、`dash_p4.c`、`ui_p4.h` | 设置页、仪表盘、两种语言的界面文字 |
 
-`components/usb_host_hid` 是 Espressif usb_host_hid 1.2.1 的拷贝，多了一个函数，原因见[力回馈](#力回馈)。
+`components/usb_host_hid` 是 Espressif usb_host_hid 1.2.1 的拷贝，多了两个函数，原因见[力回馈](#力回馈)。
 
 ### 信号路径
 
@@ -50,6 +50,8 @@ wheel.c → control.c（驾驶模型、安全）→ radio.c（操控）→ crsf.
 
 力回馈报告要从 HID 接口的中断 OUT 端点发（R5 是 0x03）。从控制通道用 SET_REPORT 发，R5 会回 OK，但什么都不做。ESP-IDF 的 usb_host_hid 不支持 OUT 端点，所以 `components/usb_host_hid` 多了 `hid_host_device_send_output_report()`。效果还要打开方向，并设成 90 度（X 轴），否则弹簧和阻尼都没有力。
 
+T300RS 照 Linux 的 hid-thrustmaster 和 hid-tmff2 做。刚插上时它是 `044f:b65d`，固件用厂商请求读它的型号，再发切换请求；ESP-IDF 也做不到这个，所以 `components/usb_host_hid` 还多了 `hid_host_device_vendor_request()`。底座重新连上后变成 `044f:b66e`。它的力回馈是同一个 OUT 端点上的输出报告 0x60，用 Thrustmaster 自己的格式：打开、关掉自带回正、转角 900°，再上传、启动和更新三个条件效果。
+
 ## 串口命令
 
 在看日志的那个口（“USB TO UART”，115200），一行一条：
@@ -63,6 +65,7 @@ wheel.c → control.c（驾驶模型、安全）→ radio.c（操控）→ crsf.
 | `name <名字>` | 改当前那台车的名字 |
 | `kind <0–3>` | 当前那台车的发射方式：0 ELRS、1 四合一串口、2 四合一 PPM、3 遥控器主板 |
 | `dead <左> <右> <前进> <倒车>` | 当前那台车的方向和油门死区，千分比 |
+| `scan` | 列出 I2C 上所有有回应的地址。正常只有触控（0x14 或 0x5D）和 DAC（0x60）；出现几十个地址，表示有东西拖住总线，通常是线松了或插错 |
 
 ## 调试页面
 

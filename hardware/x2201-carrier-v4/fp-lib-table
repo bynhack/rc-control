@@ -1,0 +1,4 @@
+(fp_lib_table
+  (version 7)
+  (lib (name "Espressif")(type "KiCad")(uri "${KIPRJMOD}/../lib/Espressif.pretty")(options "")(descr "Espressif's footprints (github.com/espressif/kicad-libraries)"))
+)

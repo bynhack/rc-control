@@ -51,6 +51,7 @@ static const char *TAG = "remote";
 //   "name <text>"          rename the active car
 //   "kind <0..3>"          the active car's radio (radio_kind_t)
 //   "dead <steerL> <steerR> <thrF> <thrR>"  the active car's dead bands, thousandths
+//   "scan"                 log every address answering on the I2C bus
 // While "w" samples arrive the state is logged 5 times a second for the page.
 #define CONSOLE_UART UART_NUM_0
 
@@ -142,6 +143,14 @@ static void console_task(void *arg) {
             s_override_at = esp_timer_get_time();
             taskEXIT_CRITICAL(&s_lock);
             ESP_LOGI(TAG, "test: A %d (%.2f V)  B %d (%.2f V)", a, a * 3.3f / 4096, b, b * 3.3f / 4096);
+        } else if (!strcmp(line, "scan")) {
+            char found[160] = "";
+            for (int addr = 0x08; addr < 0x78; addr++) {
+                if (i2c_master_probe(bsp_i2c_get_handle(), addr, 20) == ESP_OK) {
+                    snprintf(found + strlen(found), sizeof(found) - strlen(found), " 0x%02x", addr);
+                }
+            }
+            ESP_LOGI(TAG, "I2C scan:%s", found[0] ? found : " nothing");
         } else if (line[0] == 'x') {
             taskENTER_CRITICAL(&s_lock);
             s_override_a = s_override_b = -1;

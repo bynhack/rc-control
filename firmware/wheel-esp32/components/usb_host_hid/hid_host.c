@@ -2086,3 +2086,43 @@ esp_err_t hid_host_device_send_output_report(hid_host_device_handle_t hid_dev_ha
     }
     return x->status == USB_TRANSFER_STATUS_COMPLETED ? ESP_OK : ESP_FAIL;
 }
+
+esp_err_t hid_host_device_vendor_request(hid_host_device_handle_t hid_dev_handle,
+                                         uint8_t bm_request_type, uint8_t b_request,
+                                         uint16_t w_value, uint16_t w_index,
+                                         uint8_t *data, size_t length, size_t *out_length)
+{
+    hid_iface_t *iface = get_iface_by_handle(hid_dev_handle);
+    HID_RETURN_ON_INVALID_ARG(iface);
+    hid_device_t *hid_device = iface->parent;
+    HID_RETURN_ON_INVALID_ARG(hid_device->ctrl_xfer);
+    HID_RETURN_ON_FALSE(USB_SETUP_PACKET_SIZE + length <= hid_device->ctrl_xfer->data_buffer_size,
+                        ESP_ERR_INVALID_SIZE, "Request too long");
+    HID_RETURN_ON_ERROR( hid_device_try_lock(hid_device, DEFAULT_TIMEOUT_MS),
+                         "HID Device is busy by other task");
+
+    usb_transfer_t *ctrl_xfer = hid_device->ctrl_xfer;
+    usb_setup_packet_t *setup = (usb_setup_packet_t *)ctrl_xfer->data_buffer;
+    const bool in = bm_request_type & USB_BM_REQUEST_TYPE_DIR_IN;
+    setup->bmRequestType = bm_request_type;
+    setup->bRequest = b_request;
+    setup->wValue = w_value;
+    setup->wIndex = w_index;
+    setup->wLength = length;
+    if (!in && length && data) {
+        memcpy(ctrl_xfer->data_buffer + USB_SETUP_PACKET_SIZE, data, length);
+    }
+
+    esp_err_t ret = hid_control_transfer(hid_device, USB_SETUP_PACKET_SIZE + length, DEFAULT_TIMEOUT_MS);
+    if (ret == ESP_OK && in) {
+        size_t got = ctrl_xfer->actual_num_bytes;
+        size_t n = got > USB_SETUP_PACKET_SIZE ? got - USB_SETUP_PACKET_SIZE : 0;
+        n = n < length ? n : length;
+        memcpy(data, ctrl_xfer->data_buffer + USB_SETUP_PACKET_SIZE, n);
+        if (out_length) {
+            *out_length = n;
+        }
+    }
+    hid_device_unlock(hid_device);
+    return ret;
+}

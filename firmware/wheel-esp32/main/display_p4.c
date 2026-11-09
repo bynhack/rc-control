@@ -209,6 +209,12 @@ static const char *const TEXT[T_COUNT][2] = {
                     "車上沒有測速器：儀表的車速 = 估算的速度比例 × 最高車速。按這台車的實際極速填寫。"},
     [T_CAP_POWER] = {"动力", "動力"},
     [T_CAP_POWER10] = {"动力 ×10%", "動力 ×10%"},
+    [T_WHEEL_PICK] = {"方向盘型号", "方向盤型號"},
+    [T_WHEEL_AUTO] = {"自动", "自動"},
+    [T_WHEEL_HINT] = {"自动：插上哪个用哪个。选了型号，就只用那一种，插着别的方向盘不会动。",
+                      "自動：插上哪個用哪個。選了型號，就只用那一種，插著別的方向盤不會動。"},
+    [T_WHEEL_OTHER_FMT] = {"%s  设置里选的是 %s", "%s  設定裡選的是 %s"},
+    [T_T300_BOOT] = {"T300RS 切换模式中…", "T300RS 切換模式中…"},
 };
 
 static lang_t s_lang = LANG_SC;
@@ -218,7 +224,7 @@ static const char *tr(int id) {
 }
 
 // Labels with fixed text, re-set when the language changes.
-#define MAX_TLABELS 128
+#define MAX_TLABELS 160
 static struct {
     lv_obj_t *obj;
     int id;
@@ -675,6 +681,12 @@ static void on_flip(lv_event_t *e) {
     esp_restart();
 }
 
+static lv_obj_t *s_wheel_btn[WHEEL_KINDS];
+
+static void on_wheel(lv_event_t *e) {
+    ui_wheel_set((int)(intptr_t)lv_event_get_user_data(e));
+}
+
 static void on_kmh(lv_event_t *e) {
     int v = s_kmh + (int)(intptr_t)lv_event_get_user_data(e);
     s_kmh = v < 5 ? 5 : (v > 150 ? 150 : v);
@@ -745,6 +757,20 @@ static void build_drive_tab(lv_obj_t *t) {
     lv_obj_set_width(flh, vx - M - 8 - 24);
     lv_label_set_long_mode(flh, LV_LABEL_LONG_WRAP);
     lv_obj_set_pos(flh, M + 8, 530);
+
+    // Which wheel base, right of the screen flip.
+    setup_label(t, vx, 440, T_WHEEL_PICK);
+    for (int i = 0; i < WHEEL_KINDS; i++) {
+        s_wheel_btn[i] = button(t, vx + i * 128, 464, 120, 56, C_GREEN, &cjk_20, i ? wheel_kind_name(i) : "");
+        if (i == WHEEL_NONE) {
+            track(lv_obj_get_child(s_wheel_btn[i], 0), T_WHEEL_AUTO);
+        }
+        lv_obj_add_event_cb(s_wheel_btn[i], on_wheel, LV_EVENT_CLICKED, (void *)(intptr_t)i);
+    }
+    lv_obj_t *wh = track(label(t, &cjk_16, C_DIM, ""), T_WHEEL_HINT);
+    lv_obj_set_width(wh, 1024 - vx - M - 8);
+    lv_label_set_long_mode(wh, LV_LABEL_LONG_WRAP);
+    lv_obj_set_pos(wh, vx, 530);
 }
 
 // A value between minus and plus buttons; returns the value label.
@@ -1166,11 +1192,16 @@ void display_init(void) {
 
 static void show_status(const display_state_t *s) {
     const control_view_t *c = &s->ctl;
-    char buf[48];
+    char buf[64];
     if (s->vid != 0) {
-        const char *name = wheel_name(s->vid, s->pid);
-        if (name) {
+        const char *name = wheel_kind_name(s->kind);
+        int want = ui_wheel_get();
+        if (name && !wheel_wanted(s->kind, want)) {
+            snprintf(buf, sizeof(buf), tr(T_WHEEL_OTHER_FMT), name, wheel_kind_name(want));
+        } else if (name) {
             snprintf(buf, sizeof(buf), "%s  %.0f Hz", name, (double)s->rate);
+        } else if (s->vid == T300_VID && s->pid == T300_PID_BOOT) {
+            snprintf(buf, sizeof(buf), "%s", tr(T_T300_BOOT));
         } else {
             snprintf(buf, sizeof(buf), tr(T_UNKNOWN_FMT), s->vid, s->pid);
         }
@@ -1355,6 +1386,9 @@ static void show_setup(const display_state_t *s) {
     set_text(s_vol_val, buf);
     for (int i = 0; i < SOUND_VOICES; i++) {
         highlight(s_sound_btn[i], ui_sound_get() == i, C_AMBER);
+    }
+    for (int i = 0; i < WHEEL_KINDS; i++) {
+        highlight(s_wheel_btn[i], ui_wheel_get() == i, C_GREEN);
     }
     for (int i = 0; i < MULTI_PROTO_COUNT && i < 16; i++) {
         highlight(s_proto_btn[i], c->proto == i, c->kind == RADIO_MULTI_SERIAL ? C_AMBER : C_DIM);

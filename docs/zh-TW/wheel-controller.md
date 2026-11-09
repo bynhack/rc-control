@@ -11,7 +11,7 @@
 | 部件 | 型號 | 說明 |
 |---|---|---|
 | 主控和儀表盤 | 微雪 ESP32-P4-WIFI6-Touch-LCD-7B | USB-A（OTG）口接方向盤；USB-C「USB TO UART」口用來燒錄和看 log；7 吋 1024×600 觸控螢幕 |
-| 方向盤底座 | MOZA R5（USB `346e:0004`） | 在 Pit House 裡把方向盤角度設成 900° |
+| 方向盤底座 | MOZA R5（USB `346e:0004`）或 Thrustmaster T300RS（`044f:b66e`） | MOZA：在 Pit House 裡把方向盤角度設成 900°。T300：底座開關撥到 PS3（PC）模式，900° 由韌體自己設 |
 | ELRS 發射 | 刷成「RX as TX」的 CYCLONE Nano RX2400（雙線），或 BETAFPV 高頻頭（單線） | 見[發射方式](radios.md#expresslrs) |
 | 四合一（可選） | iRangeX IRX4+ 裸板 | 見[發射方式](radios.md#四合一-multi) |
 | 遙控器主板（可選） | MCP4728 四路 I2C DAC 模組 | 見[改裝玩具遙控器](toy-remote.md) |
@@ -51,7 +51,8 @@ idf.py -p /dev/cu.usbmodemXXXX flash
 
 ## 第一次使用
 
-1. 把 MOZA 底座插到 USB-A 口。板子認到後，儀表盤上會顯示方向盤。
+1. 把方向盤底座插到 USB-A 口。板子認到後，儀表盤上會顯示方向盤。T300 剛插上是基本模式，板子會把它切換過去，螢幕會短暫顯示「切換模式中」。
+   - 「駕駛設定」分頁的「方向盤型號」選用哪個底座：「自動」插上哪個用哪個；選 MOZA R5 或 T300RS 就只用那一種。插著別的底座不會動，狀態分頁會顯示你選的是哪個。
 2. 點螢幕右上角的 ⚙。在「車輛」選一台車，在「發射設定」選那台車的發射方式。
 3. 照[發射方式](radios.md)裡對應的說明，替接收機對頻。
 4. 掛 N 檔，兩個踏板都放開，按 **Start** 點火，就可以[開車](driving.md)了。

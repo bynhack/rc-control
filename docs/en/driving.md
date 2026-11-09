@@ -2,16 +2,18 @@
 
 **English** | [繁體中文](../zh-TW/driving.md) | [简体中文](../zh-CN/driving.md)
 
-## Controls (MOZA R5)
+## Controls
 
-| Button | HID number | Function |
-|---|---|---|
-| Start | 36 | Start or stop the engine. It only starts in N with both pedals released |
-| Right / left paddle | 14 / 13 | Gear up / down: R N 1 2 3 |
-| P | 32 | Emergency stop |
-| N | 19 | Bind, in 4-in-1 serial mode |
+| Function | MOZA R5 | T300RS | Notes |
+|---|---|---|---|
+| Start or stop the engine | Start (36) | Start (10) | It only starts in N with both pedals released |
+| Gear up / down: R N 1 2 3 | Right / left paddle (14 / 13) | Right / left paddle (2 / 1) | |
+| Emergency stop | P (32) | Cross (3) | |
+| Bind | N (19) | Triangle (6) | In 4-in-1 serial mode |
 
-The right pedal (Z axis) is the throttle and the left pedal (Rz) is the brake.
+The numbers in brackets are HID button numbers. The status tab shows the number of each button you press. The T300RS numbers come from the Linux driver's report layout and haven't been checked on a real wheel yet. If one is wrong, change `BUTTONS` in `main/main.c`.
+
+The right pedal is the throttle and the left pedal is the brake.
 
 ## The driving model
 
@@ -74,11 +76,13 @@ While you set one of them, that setting itself is left out. What you see is the 
 
 ## Force feedback
 
-The MOZA R5 gets standard USB PID effects:
+Both bases get the same three effects:
 
 - a spring that centres the wheel and gets stronger with speed
 - a damper
 - a third spring with a dead band, which acts as the soft stop at the wheel range
+
+The MOZA R5 takes them as standard USB PID effects. The T300RS has its own protocol. On the T300 the firmware also turns off the base's own centring spring and sets the rotation to 900°.
 
 The strength is on the **Drive** (驾驶设置) tab, default 40 %. How the reports reach the base is in [Development](development.md#force-feedback).
 

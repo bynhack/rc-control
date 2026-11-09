@@ -138,6 +138,11 @@ void ui_dash_set(int dash);
 int ui_topspeed_get(void);
 void ui_topspeed_set(int kmh);
 
+// Which wheel base to use (wheel.h wheel_kind_t; WHEEL_NONE = whichever is
+// plugged in, the default). Read with every input report, so cached.
+int ui_wheel_get(void);
+void ui_wheel_set(int kind);
+
 // Force feedback strength on the wheel base, 0..100 % (ffb.c). Default 40.
 int ui_ffb_get(void);
 void ui_ffb_set(int pct);

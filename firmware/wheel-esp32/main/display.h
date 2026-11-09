@@ -14,6 +14,7 @@
 typedef struct {
     bool wheel;        // a parsed wheel report arrived recently
     uint16_t vid, pid; // attached HID device, 0 when none
+    wheel_kind_t kind; // what it is, WHEEL_NONE when not a known base
     float rate;        // reports per second
     wheel_axes_t axes; // raw pedals and steering, valid when wheel is true
     control_view_t ctl;

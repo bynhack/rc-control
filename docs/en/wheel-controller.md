@@ -11,7 +11,7 @@ The firmware is in [`firmware/wheel-esp32`](../../firmware/wheel-esp32).
 | Part | Model | Notes |
 |---|---|---|
 | Controller and dashboard | Waveshare ESP32-P4-WIFI6-Touch-LCD-7B | The USB-A (OTG) port takes the wheel. The USB-C "USB TO UART" port is for flashing and the log. 7" 1024×600 touch screen |
-| Wheel base | MOZA R5 (USB `346e:0004`) | Set the wheel angle to 900° in Pit House |
+| Wheel base | MOZA R5 (USB `346e:0004`) or Thrustmaster T300RS (`044f:b66e`) | MOZA: set the wheel angle to 900° in Pit House. T300: put the switch on the base in PS3 (PC) mode; the firmware sets 900° itself |
 | ELRS transmitter | A CYCLONE Nano RX2400 flashed as "RX as TX" (two wires), or a BETAFPV module (one wire) | See [Radios](radios.md#expresslrs) |
 | 4-in-1 module (optional) | iRangeX IRX4+ bare board | See [Radios](radios.md#multi-4-in-1) |
 | Toy remote driver (optional) | MCP4728 4-channel I2C DAC board | See [Converting a toy remote](toy-remote.md) |
@@ -51,7 +51,8 @@ The ESP-IDF component manager downloads LVGL and the Waveshare BSP on the first 
 
 ## First run
 
-1. Plug the MOZA base into the USB-A port. When the board recognises it, the dashboard shows the wheel.
+1. Plug the wheel base into the USB-A port. When the board recognises it, the dashboard shows the wheel. A T300 first shows up in a basic mode, and the board switches it over. The screen shows "switching mode" (切换模式中) for a moment while it does.
+   - **Wheel model** (方向盘型号) on the **Drive** (驾驶设置) tab picks the base: **Auto** (自动) uses whichever is plugged in, and MOZA R5 or T300RS uses only that one. If a different base is plugged in, it is left alone and the status tab says which one you picked.
 2. Tap ⚙ at the top right of the screen. Under **Cars** (车辆), choose a car. Under **Radio** (发射设置), choose how that car is reached. The screen is in Chinese; the docs give each label in English with the Simplified Chinese on screen in brackets.
 3. Bind the receiver as described for that radio in [Radios](radios.md).
 4. Put the gearbox in N, release both pedals, and press **Start** to start the engine. Then [drive](driving.md).

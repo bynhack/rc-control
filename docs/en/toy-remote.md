@@ -67,6 +67,8 @@ If you don't want to cut anything, solder the DAC outputs straight onto the pots
 > [!WARNING]
 > The VCC pin of the P4's I2C terminal is 5 V; don't use it. The DAC board's 4.7k pull-ups go to its VCC. At 5 V they pull the I2C bus to 5 V and the whole bus hangs, touch panel included.
 
+The board's UART terminal (5-pin PH2.0) looks a lot like the I2C terminal. If the DAC isn't found, first check that the cable is in the I2C one.
+
 The DAC stores the rest position in its EEPROM, so the car doesn't move while the P4 is still booting.
 
 ## Calibration

@@ -1,7 +1,8 @@
 // Standalone wheel controller on the Waveshare ESP32-P4 7B: wheel base over
 // USB host in, the selected radio out (radio.h), no PC. Known bases
-// (wheel.h: T300RS, MOZA R5) are parsed; any other HID device has its report
-// descriptor and changing raw reports dumped so its layout can be worked out.
+// (wheel.h: T300RS, MOZA R5) are parsed, the one picked on the screen or
+// whichever is plugged in; any other HID device has its report descriptor
+// and changing raw reports dumped so its layout can be worked out.
 //
 // Wiring:
 //   USB-A (OTG)        <- wheel base
@@ -10,11 +11,11 @@
 //   I2C terminal       -> MCP4728 for a toy remote (remote.h)
 //   UART0              -> log and bench console, 115200, the "USB TO UART" port
 //
-// Wheel buttons (MOZA R5 numbering, read off the log):
-//   Start (36)          ignition on / off (starts in neutral, pedals released)
-//   right / left paddle gear up / down (14 / 13): R N 1 2 3
-//   P (32)              emergency stop
-//   N (19)              bind the MULTI module
+// Wheel buttons (BUTTONS below has each base's numbers):
+//   Start               ignition on / off (starts in neutral, pedals released)
+//   right / left paddle gear up / down: R N 1 2 3
+//   P / Cross           emergency stop
+//   N / Triangle        bind the MULTI module
 
 #include <math.h>
 #include <stdio.h>
@@ -53,12 +54,18 @@ static const char *TAG = "wheel";
 // Shows the last pressed button number on screen this long, for mapping.
 #define BUTTON_SHOW_MS 2000
 
-#define BTN_ARM 36
-#define BTN_GEAR_UP 14
-#define BTN_GEAR_DOWN 13
-#define BTN_ESTOP 32
-// N: binds the MULTI module (multi.h)
-#define BTN_BIND 19
+typedef struct {
+    int arm, gear_up, gear_down, estop, bind;
+} buttons_t;
+
+// MOZA R5 numbering read off the log. T300RS (PS3 / PC mode): 1 / 2 left /
+// right paddle (checked on the wheel); the rest in the order hid-tmff2's
+// descriptor gives, 3 Cross, 4 Square, 5 Circle, 6 Triangle, 10 Start, still
+// to check against "button N" on the screen.
+static const buttons_t BUTTONS[WHEEL_KINDS] = {
+    [WHEEL_MOZA] = {.arm = 36, .gear_up = 14, .gear_down = 13, .estop = 32, .bind = 19},
+    [WHEEL_T300] = {.arm = 10, .gear_up = 2, .gear_down = 1, .estop = 3, .bind = 6},
+};
 
 typedef struct {
     hid_host_device_handle_t handle;
@@ -73,6 +80,7 @@ static wheel_axes_t s_axes;
 static int64_t s_axes_at_us = -1;
 static uint32_t s_reports;
 static uint16_t s_vid, s_pid; // 0 while nothing is attached
+static wheel_kind_t s_kind;
 static int s_last_button;
 static int64_t s_last_button_at_us;
 
@@ -82,7 +90,8 @@ static const char *gear_name(gear_t g) {
 }
 
 // Button actions fire on the press edge.
-static void handle_buttons(uint64_t now_b, int64_t now_us) {
+static void handle_buttons(wheel_kind_t kind, uint64_t now_b, int64_t now_us) {
+    const buttons_t *btn = &BUTTONS[kind];
     static uint64_t prev;
     uint64_t pressed = now_b & ~prev;
     prev = now_b;
@@ -97,12 +106,12 @@ static void handle_buttons(uint64_t now_b, int64_t now_us) {
     portEXIT_CRITICAL(&s_lock);
     ESP_LOGI(TAG, "button %d", n);
 
-    if (pressed & WHEEL_BUTTON(BTN_ESTOP)) {
+    if (pressed & WHEEL_BUTTON(btn->estop)) {
         control_estop();
         ESP_LOGW(TAG, "E-STOP");
         return;
     }
-    if (pressed & WHEEL_BUTTON(BTN_ARM)) {
+    if (pressed & WHEEL_BUTTON(btn->arm)) {
         if (control_view(now_us).engine) {
             control_ignition_off("OFF");
             ESP_LOGI(TAG, "engine off");
@@ -111,11 +120,11 @@ static void handle_buttons(uint64_t now_b, int64_t now_us) {
             ESP_LOGI(TAG, "ignition: %s", why ? why : "ON");
         }
     }
-    if ((pressed & WHEEL_BUTTON(BTN_BIND)) && radio_config().kind == RADIO_MULTI_SERIAL) {
+    if ((pressed & WHEEL_BUTTON(btn->bind)) && radio_config().kind == RADIO_MULTI_SERIAL) {
         multi_bind();
     }
     for (int i = 0; i < 2; i++) {
-        if (pressed & WHEEL_BUTTON(i ? BTN_GEAR_DOWN : BTN_GEAR_UP)) {
+        if (pressed & WHEEL_BUTTON(i ? btn->gear_down : btn->gear_up)) {
             const char *why = control_shift(i ? -1 : 1, now_us);
             ESP_LOGI(TAG, "gear %s%s%s", gear_name(control_view(now_us).gear), why ? "  refused: " : "", why ? why : "");
         }
@@ -157,7 +166,9 @@ static void interface_callback(hid_host_device_handle_t handle, const hid_host_i
                 return;
             }
             wheel_axes_t axes;
-            bool ok = wheel_parse(s_vid, s_pid, data, len, &axes);
+            // A base that isn't the one picked on the screen is left alone.
+            wheel_kind_t kind = s_kind;
+            bool ok = wheel_wanted(kind, ui_wheel_get()) && wheel_parse(kind, data, len, &axes);
             uint32_t n;
             int64_t now = esp_timer_get_time();
             portENTER_CRITICAL(&s_lock);
@@ -169,7 +180,7 @@ static void interface_callback(hid_host_device_handle_t handle, const hid_host_i
             portEXIT_CRITICAL(&s_lock);
             if (ok) {
                 control_input(axes.steering, axes.gas, axes.brake, now);
-                handle_buttons(axes.buttons, now);
+                handle_buttons(kind, axes.buttons, now);
             }
             if (n <= RAW_REPORTS_TO_DUMP) {
                 dump_hex(ok ? "report" : "report (unparsed)", data, len);
@@ -184,6 +195,7 @@ static void interface_callback(hid_host_device_handle_t handle, const hid_host_i
             hid_host_device_close(handle);
             portENTER_CRITICAL(&s_lock);
             s_vid = s_pid = 0;
+            s_kind = WHEEL_NONE;
             portEXIT_CRITICAL(&s_lock);
             break;
         case HID_HOST_INTERFACE_EVENT_TRANSFER_ERROR:
@@ -192,6 +204,38 @@ static void interface_callback(hid_host_device_handle_t handle, const hid_host_i
         default:
             break;
     }
+}
+
+// A T300 first shows up as b65d. Ask its model, then tell it to switch, as
+// Linux's hid-thrustmaster does; it drops off the bus and comes back as
+// b66e. The interrupt packets first keep some bases from crashing.
+static void t300_switch(hid_host_device_handle_t handle) {
+    static const uint8_t setup[5][9] = {
+        {0x42, 0x01},
+        {0x0a, 0x04, 0x90, 0x03},
+        {0x0a, 0x04, 0x00, 0x0c},
+        {0x0a, 0x04, 0x12, 0x10},
+        {0x0a, 0x04, 0x00, 0x06},
+    };
+    for (int i = 0; i < 5; i++) {
+        hid_host_device_send_output_report(handle, setup[i], i ? 8 : 9);
+    }
+    uint8_t r[16] = {0};
+    size_t n = 0;
+    if (hid_host_device_vendor_request(handle, 0xc1, 73, 0, 0, r, sizeof(r), &n) != ESP_OK || n < 8) {
+        ESP_LOGW(TAG, "T300: no answer to the model request");
+        return;
+    }
+    // Answer type 0x49 or 0x47; the model is at b6 in both.
+    uint16_t type = r[0] | (r[1] << 8);
+    uint16_t model = r[6] | (r[7] << 8);
+    if ((type != 0x49 && type != 0x47) || (model >> 8) != 0x02) {
+        ESP_LOGW(TAG, "T300: model %04x (answer %04x) is not a T300, left as it is", model, type);
+        return;
+    }
+    ESP_LOGI(TAG, "T300 model %04x: switching to its full mode", model);
+    // It drops off before answering, so an error here is expected.
+    hid_host_device_vendor_request(handle, 0x41, 83, 0x0005, 0, NULL, 0, NULL);
 }
 
 // Runs in the HID driver's background task; hand over to the main task,
@@ -211,14 +255,24 @@ static void open_device(hid_host_device_handle_t handle) {
     ESP_ERROR_CHECK(hid_host_device_open(handle, &config));
 
     hid_host_dev_info_t info = {0};
+    wheel_kind_t kind = WHEEL_NONE;
     if (hid_host_get_device_info(handle, &info) == ESP_OK) {
-        const char *name = wheel_name(info.VID, info.PID);
-        ESP_LOGI(TAG, "device %04x:%04x  %ls / %ls  (%s)", info.VID, info.PID, info.iManufacturer, info.iProduct,
-                 name ? name : "unknown layout, dumping reports");
+        kind = wheel_kind(info.VID, info.PID);
+        const char *name = wheel_kind_name(kind);
+        ESP_LOGI(TAG, "device %04x:%04x  %ls / %ls  (%s%s)", info.VID, info.PID, info.iManufacturer, info.iProduct,
+                 name ? name : "unknown layout, dumping reports",
+                 name && !wheel_wanted(kind, ui_wheel_get()) ? ", not the one picked on the screen" : "");
         portENTER_CRITICAL(&s_lock);
         s_vid = info.VID;
         s_pid = info.PID;
+        s_kind = kind;
         portEXIT_CRITICAL(&s_lock);
+    }
+    if (info.VID == T300_VID && info.PID == T300_PID_BOOT) {
+        if (wheel_wanted(WHEEL_T300, ui_wheel_get())) {
+            t300_switch(handle);
+        }
+        return;
     }
     size_t desc_len = 0;
     const uint8_t *desc = hid_host_get_report_descriptor(handle, &desc_len);
@@ -229,8 +283,8 @@ static void open_device(hid_host_device_handle_t handle) {
         }
     }
     ESP_ERROR_CHECK(hid_host_device_start(handle));
-    if (info.VID == MOZA_VID) {
-        ffb_attach(handle);
+    if (kind != WHEEL_NONE) {
+        ffb_attach(handle, kind);
     }
 }
 
@@ -321,11 +375,13 @@ static void ui_task(void *arg) {
         int64_t at;
         uint32_t reports;
         uint16_t vid, pid;
+        wheel_kind_t kind;
         int button;
         int64_t button_at;
         portENTER_CRITICAL(&s_lock);
         vid = s_vid;
         pid = s_pid;
+        kind = s_kind;
         button = s_last_button;
         button_at = s_last_button_at_us;
         a = s_axes;
@@ -340,6 +396,7 @@ static void ui_task(void *arg) {
             .axes = a,
             .vid = vid,
             .pid = pid,
+            .kind = kind,
             .rate = rate,
             .ctl = control_view(now),
             .radio = crsf_status(),

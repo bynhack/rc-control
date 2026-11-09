@@ -441,6 +441,19 @@ esp_err_t hid_class_request_set_protocol(hid_host_device_handle_t hid_dev_handle
 esp_err_t hid_host_device_send_output_report(hid_host_device_handle_t hid_dev_handle,
                                              const uint8_t *data, size_t length);
 
+/**
+ * @brief Vendor (or any other) control request on EP0 (rc-control addition;
+ * the Thrustmaster bases are switched into their full mode this way).
+ *
+ * @param[in]    bm_request_type  Its direction bit says which way data goes
+ * @param[inout] data             Sent, or filled with the answer, length bytes
+ * @param[out]   out_length       Bytes answered, for IN requests (may be NULL)
+ */
+esp_err_t hid_host_device_vendor_request(hid_host_device_handle_t hid_dev_handle,
+                                         uint8_t bm_request_type, uint8_t b_request,
+                                         uint16_t w_value, uint16_t w_index,
+                                         uint8_t *data, size_t length, size_t *out_length);
+
 #ifdef __cplusplus
 }
 #endif //__cplusplus

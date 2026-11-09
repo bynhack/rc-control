@@ -1,9 +1,9 @@
 #include "wheel.h"
 
-// T300: half the measured lock-to-centre span.
-#define T300_STEER_HALF ((float)0x3800)
 #define T300_REPORT_ID 0x07
 #define T300_REPORT_MIN_LEN 16
+#define T300_BUTTON_BIT0 (11 * 8)
+#define T300_BUTTONS 13
 
 #define MOZA_REPORT_ID 0x01
 #define MOZA_REPORT_MIN_LEN 13
@@ -35,10 +35,16 @@ static bool t300_parse(const uint8_t *data, size_t len, wheel_axes_t *out) {
     if (len < T300_REPORT_MIN_LEN || data[0] != T300_REPORT_ID) {
         return false;
     }
-    out->steering = clampf(((float)u16le(data, 1) - (float)0x8000) / T300_STEER_HALF, -1.0f, 1.0f);
+    out->steering = clampf(((float)u16le(data, 1) - 32768.0f) / 32768.0f, -1.0f, 1.0f);
     out->brake = t300_pressed(data, 3);
     out->gas = t300_pressed(data, 5);
     out->buttons = 0;
+    for (int k = 0; k < T300_BUTTONS; k++) {
+        size_t bit = T300_BUTTON_BIT0 + k;
+        if ((data[bit / 8] >> (bit % 8)) & 1) {
+            out->buttons |= 1ull << k;
+        }
+    }
     return true;
 }
 
@@ -59,25 +65,32 @@ static bool moza_parse(const uint8_t *data, size_t len, wheel_axes_t *out) {
     return true;
 }
 
-bool wheel_known(uint16_t vid, uint16_t pid) {
-    return wheel_name(vid, pid) != NULL;
-}
-
-const char *wheel_name(uint16_t vid, uint16_t pid) {
+wheel_kind_t wheel_kind(uint16_t vid, uint16_t pid) {
     if (vid == T300_VID && pid == T300_PID_BASE) {
-        return "T300RS";
+        return WHEEL_T300;
     }
     if (vid == MOZA_VID) {
-        return "MOZA";
+        return WHEEL_MOZA;
     }
-    return NULL;
+    return WHEEL_NONE;
 }
 
-bool wheel_parse(uint16_t vid, uint16_t pid, const uint8_t *data, size_t len, wheel_axes_t *out) {
+const char *wheel_kind_name(wheel_kind_t k) {
+    switch (k) {
+        case WHEEL_T300:
+            return "T300RS";
+        case WHEEL_MOZA:
+            return "MOZA R5";
+        default:
+            return NULL;
+    }
+}
+
+bool wheel_parse(wheel_kind_t k, const uint8_t *data, size_t len, wheel_axes_t *out) {
     bool ok;
-    if (vid == T300_VID && pid == T300_PID_BASE) {
+    if (k == WHEEL_T300) {
         ok = t300_parse(data, len, out);
-    } else if (vid == MOZA_VID) {
+    } else if (k == WHEEL_MOZA) {
         ok = moza_parse(data, len, out);
     } else {
         return false;

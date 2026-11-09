@@ -9,17 +9,17 @@ All in [`firmware/wheel-esp32/main`](../../firmware/wheel-esp32/main):
 | File | Role |
 |---|---|
 | `main.c` | Boot, USB host, and the hand-off from the wheel to the driving model |
-| `wheel.c` | Parses the wheel base's HID reports, by VID:PID |
+| `wheel.c` | Parses the wheel base's HID reports (MOZA R5, T300RS) |
 | `control.c` | The driving model and every safety rule. The radios only read `control_output()` |
 | `radio.c` | Cars, settings in NVS, and the handling every radio goes through |
 | `crsf.c` | ExpressLRS (CRSF) sender |
 | `multi.c` | MULTI 4-in-1 sender, serial or PPM |
 | `remote.c` | Toy remote through the MCP4728 DAC, and the serial console |
-| `ffb.c` | Force feedback (USB PID) |
+| `ffb.c` | Force feedback (USB PID on the MOZA, Thrustmaster's protocol on the T300) |
 | `sound.c` | Engine sound synthesis |
 | `display_p4.c`, `dash_p4.c`, `ui_p4.h` | Settings screens, instrument clusters, on-screen text in both languages |
 
-`components/usb_host_hid` is a copy of Espressif's usb_host_hid 1.2.1 with one addition, explained under [Force feedback](#force-feedback).
+`components/usb_host_hid` is a copy of Espressif's usb_host_hid 1.2.1 with two additions, explained under [Force feedback](#force-feedback).
 
 ### The signal path
 
@@ -50,6 +50,8 @@ The tuning page and the console sit below every sender, so they can't slow the c
 
 The force feedback reports have to go out on the HID interface's interrupt OUT endpoint (0x03 on the R5). If you send them with SET_REPORT on the control pipe, the R5 answers OK and does nothing. ESP-IDF's usb_host_hid doesn't support OUT endpoints, so `components/usb_host_hid` adds `hid_host_device_send_output_report()`. The effects also need their direction enabled and set to 90° (the X axis); otherwise the spring and damper have no force.
 
+The T300RS follows Linux's hid-thrustmaster and hid-tmff2. When plugged in, it shows up as `044f:b65d`. The firmware reads its model with a vendor request and sends the switch request, which ESP-IDF can't do either, so `components/usb_host_hid` also adds `hid_host_device_vendor_request()`. The base comes back as `044f:b66e`. Its force feedback is output report 0x60 on the same OUT endpoint, in Thrustmaster's own format: open, autocentre off, range 900°, then the three condition effects uploaded, started, and updated.
+
 ## Serial console
 
 The console is on the log port ("USB TO UART", 115200), one command per line:
@@ -63,6 +65,7 @@ The console is on the log port ("USB TO UART", 115200), one command per line:
 | `name <text>` | Rename the active car |
 | `kind <0–3>` | The active car's radio: 0 ELRS, 1 4-in-1 serial, 2 4-in-1 PPM, 3 toy remote |
 | `dead <left> <right> <forward> <reverse>` | The active car's steering and throttle dead bands, in thousandths |
+| `scan` | List every address answering on the I2C bus. Normally only the touch panel (0x14 or 0x5D) and the DAC (0x60). Dozens of addresses mean something is dragging the bus, usually a loose or misplaced wire |
 
 ## Tuning page
 

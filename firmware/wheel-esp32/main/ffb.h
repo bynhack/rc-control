@@ -1,5 +1,6 @@
-// Force feedback on the wheel base, through the standard USB PID reports
-// (what DirectInput games use; the MOZA R5 descriptor has them all).
+// Force feedback on the wheel base. The MOZA R5 takes the standard USB PID
+// reports (what DirectInput games use; its descriptor has them all). The
+// T300RS has its own protocol on report 0x60, as hid-tmff2 drives it.
 //
 // Three condition effects stay running: a centring spring, a damper and an
 // end stop. The
@@ -11,9 +12,10 @@
 #include <stdbool.h>
 
 #include "usb/hid_host.h"
+#include "wheel.h"
 
 // After hid_host_device_start(): resets the base's effects and creates ours.
-void ffb_attach(hid_host_device_handle_t dev);
+void ffb_attach(hid_host_device_handle_t dev, wheel_kind_t kind);
 void ffb_detach(void);
 
 // 0..1 each: centring spring stiffness and damping.

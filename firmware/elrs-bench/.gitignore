@@ -1,0 +1,4 @@
+build/
+sdkconfig
+sdkconfig.old
+ep2_hardware_backup.json
