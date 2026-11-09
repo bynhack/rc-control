@@ -30,7 +30,9 @@ python3 -m venv .venv
 
 ## X2201 轉接板
 
-[`hardware/x2201-carrier`](../../hardware/x2201-carrier) 同時是 X2201 圖傳支架的底座，也負責車上的小電流接線。它取代列印支架的底板，再往後多 10 mm：54 × 52 mm，用 1 mm 的 3M VHB 膠黏在底盤中間走線槽兩側的平面上。零件全部在正面，背面是平的。列印框架（`x2201_carrier_frame.py`）鎖在板上的四個 M2 貼片螺母上：先把圖傳放在板上，再把框架從上面蓋下來。
+> 已封存，見 [hardware/ROADMAP.md](../../hardware/ROADMAP.md)。
+
+[`hardware/archive/x2201-carrier`](../../hardware/archive/x2201-carrier) 同時是 X2201 圖傳支架的底座，也負責車上的小電流接線。它取代列印支架的底板，再往後多 10 mm：54 × 52 mm，用 1 mm 的 3M VHB 膠黏在底盤中間走線槽兩側的平面上。零件全部在正面，背面是平的。列印框架（`x2201_carrier_frame.py`）鎖在板上的四個 M2 貼片螺母上：先把圖傳放在板上，再把框架從上面蓋下來。
 
 **往外的接線全部用插座**，集中在板子後端一排，正好在後窗下方。轉接板上不用焊任何線；只有本身沒有插頭的模組（EP2、紅外 LED、風扇）要在模組那端焊一次 ZH 單頭線。
 
@@ -59,16 +61,10 @@ python3 -m venv .venv
 - 加上 `FAB=1`，`gen_pcb.py` 會一併輸出 Gerber、`bom.csv` 和 `cpl.csv`，給嘉立創 SMT 貼片用，小零件由工廠焊好。
 - 插線前先對照 J1 旁的標示確認線的顏色。
 - 板子後端多出來的 10 mm 要確認底盤那裡是平的，試裝測試框時一起看。
-
-**在嘉立創下單**
-
-1. 上傳 `x2201-carrier-gerber.zip`：2 層，板厚 1.6 mm（框架是照 1.6 mm 畫的），顏色隨意。
-2. 開啟正面 SMT 貼片，上傳 `bom.csv` 和 `cpl.csv`。BOM 已經帶 LCSC 編號；R6（33 Ω 1206）和 M2 貼片螺母要自己選料，螺母沒貨就自己手焊。
-3. 在嘉立創的貼片預覽裡確認 U2、Q1–Q4、D1、J1–J6 的第 1 腳在對的焊盤上。KiCad 和嘉立創有些零件的角度定義不同，在那裡改。
-4. J1 要買兩頭同向（1 腳對 1 腳）的 ZH1.5 4P 線。第一次通電前用電錶量一下，電調的 5V 要落在 J1 第 4 腳。
+- J1 要買兩頭同向（1 腳對 1 腳）的 ZH1.5 4P 線。第一次通電前用電錶量一下，電調的 5V 要落在 J1 第 4 腳。
 
 ```bash
-cd hardware/x2201-carrier
+cd hardware/archive/x2201-carrier
 python3 gen_sch.py
 /Applications/KiCad/KiCad.app/Contents/Frameworks/Python.framework/Versions/Current/bin/python3 gen_pcb.py   # FAB=1: gerber/, bom.csv, cpl.csv
 kicad-cli pcb drc --refill-zones x2201-carrier.kicad_pcb
@@ -78,7 +74,9 @@ kicad-cli pcb drc --refill-zones x2201-carrier.kicad_pcb
 
 ## X2201 轉接板 v4（ESP32-S3）
 
-[`hardware/x2201-carrier-v4`](../../hardware/x2201-carrier-v4) 在轉接板上加了一顆 ESP32-S3，車子有了自己的大腦。這是下一版，還沒做：目前在製作的是上面的 v3。
+> 已封存，不在目前的迭代路徑上，見 [hardware/ROADMAP.md](../../hardware/ROADMAP.md)。
+
+[`hardware/archive/x2201-carrier-v4`](../../hardware/archive/x2201-carrier-v4) 在轉接板上加了一顆 ESP32-S3，車子有了自己的大腦。這是下一版，還沒做：目前在製作的是上面的 v3。
 
 - **訊號路線**：EP2 → CRSF（UART）→ ESP32-S3 → PWM → 電調。EP2 要改成序列 CRSF 輸出，不再輸出 PWM；失控保護由 ESP32 負責（CRSF 斷掉就把油門歸零）。
 - **新增的功能**：電池電壓回傳到方向盤、眼鏡裡的 OSD（透過圖傳線第 3、4 腳的 MSP）、計圈紅外線碼（不用 CH32）、狀態燈，還有前緣的 USB-C，用來燒錄和看序列埠。
@@ -90,14 +88,16 @@ kicad-cli pcb drc --refill-zones x2201-carrier.kicad_pcb
 - DRC 和框架的干涉檢查都通過。ESP32 的韌體還沒寫。
 
 ```bash
-cd hardware/x2201-carrier-v4
+cd hardware/archive/x2201-carrier-v4
 /Applications/KiCad/KiCad.app/Contents/Frameworks/Python.framework/Versions/Current/bin/python3 gen_pcb.py   # FAB=1: gerber/, bom.csv, cpl.csv
 /Applications/KiCad/KiCad.app/Contents/Frameworks/Python.framework/Versions/Current/bin/python3 gen_sch.py   # 原理圖，從板子的網路產生
 ```
 
 ## X2201 轉接板 v5（OpenIPC）
 
-[`hardware/x2201-carrier-v5`](../../hardware/x2201-carrier-v5) 是 v4 把 Walksnail 圖傳換成 OpenIPC 數位圖傳，車上只要接攝影機。**目前只畫了電路。** 排板要等實物到了量過尺寸再做。
+> 已封存，不在目前的迭代路徑上，見 [hardware/ROADMAP.md](../../hardware/ROADMAP.md)。
+
+[`hardware/archive/x2201-carrier-v5`](../../hardware/archive/x2201-carrier-v5) 是 v4 把 Walksnail 圖傳換成 OpenIPC 數位圖傳，車上只要接攝影機。**目前只畫了電路。** 排板要等實物到了量過尺寸再做。
 
 - **影像**：買現成的 OpenIPC Thinker Base（SSC338Q，25 × 25 mm，M2 孔距 20 × 20），用銅柱疊在板子上面。IMX335 攝影機插在它上面。電腦版本來就能用 RTL8812AU 網卡收 OpenIPC。
 - **WiFi**：BL-M8812EU2（RTL8812EU）模組。它最大要 5 V 2 A 以上，電調的 1 A BEC 不夠，所以由 U4（LMR51430，5 V 3 A）從電池另外降壓供電。最大佔空比 98%，2S 沒電時也撐得住 5 V。要加散熱片和風扇，室內發射功率調低。
@@ -114,7 +114,7 @@ cd hardware/x2201-carrier-v4
 - ERC：0 個錯誤。
 
 ```bash
-cd hardware/x2201-carrier-v5
+cd hardware/archive/x2201-carrier-v5
 /Applications/KiCad/KiCad.app/Contents/Frameworks/Python.framework/Versions/Current/bin/python3 gen_pcb.py   # 只放零件，沒走線
 /Applications/KiCad/KiCad.app/Contents/Frameworks/Python.framework/Versions/Current/bin/python3 gen_sch.py   # 原理圖，從板子的網路產生
 ```

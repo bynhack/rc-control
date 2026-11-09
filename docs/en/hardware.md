@@ -30,7 +30,9 @@ python3 -m venv .venv
 
 ## X2201 carrier board
 
-[`hardware/x2201-carrier`](../../hardware/x2201-carrier) is the base of the X2201's FPV mount and the car's low-current wiring in one. It takes the place of the printed mount's plate and reaches 10 mm further back: 54 × 52 mm, on 1 mm 3M VHB tape on the chassis' two strips either side of the middle channel. All parts are on the top, so the underside is flat. The printed frame (`x2201_carrier_frame.py`) screws onto its four M2 SMT nuts: set the VTX on the board, then lower the frame over it.
+> Archived. See [hardware/ROADMAP.md](../../hardware/ROADMAP.md).
+
+[`hardware/archive/x2201-carrier`](../../hardware/archive/x2201-carrier) is the base of the X2201's FPV mount and the car's low-current wiring in one. It takes the place of the printed mount's plate and reaches 10 mm further back: 54 × 52 mm, on 1 mm 3M VHB tape on the chassis' two strips either side of the middle channel. All parts are on the top, so the underside is flat. The printed frame (`x2201_carrier_frame.py`) screws onto its four M2 SMT nuts: set the VTX on the board, then lower the frame over it.
 
 **Everything that leaves the board plugs in**, in one row along the back edge, under the rear window. Nothing is soldered to the board. Only the modules that come without a plug (the EP2, the IR LED, the fan) get a ZH pigtail soldered on once, at the module.
 
@@ -59,16 +61,10 @@ The ESC's switch turns everything on:
 - With `FAB=1`, `gen_pcb.py` also writes the Gerbers, `bom.csv` and `cpl.csv` for JLCPCB's SMT assembly, so the small parts come soldered.
 - Check the cable's colours against the labels by J1 before plugging it in.
 - Check that the chassis is flat under the extra 10 mm at the back when you test-fit the cage.
-
-**Ordering from JLCPCB**
-
-1. Upload `x2201-carrier-gerber.zip`: 2 layers, 1.6 mm thick (the frame is drawn for 1.6 mm), any colour.
-2. Turn on SMT assembly on the top side, then upload `bom.csv` and `cpl.csv`. The BOM has LCSC numbers. Pick R6 (33 Ω 1206) and the M2 SMT nuts yourself, or solder the nuts by hand if JLC doesn't stock them.
-3. In JLC's placement preview, check that pin 1 of U2, Q1–Q4, D1 and J1–J6 sits on the right pad. KiCad and JLC disagree on some rotations; fix them there.
-4. For J1, buy a ZH1.5 4P lead with both ends wired the same way (pin 1 to pin 1). Before the first power-up, check with a meter that the ESC's 5V lands on J1 pin 4.
+- For J1, buy a ZH1.5 4P lead with both ends wired the same way (pin 1 to pin 1). Before the first power-up, check with a meter that the ESC's 5V lands on J1 pin 4.
 
 ```bash
-cd hardware/x2201-carrier
+cd hardware/archive/x2201-carrier
 python3 gen_sch.py
 /Applications/KiCad/KiCad.app/Contents/Frameworks/Python.framework/Versions/Current/bin/python3 gen_pcb.py   # FAB=1: gerber/, bom.csv, cpl.csv
 kicad-cli pcb drc --refill-zones x2201-carrier.kicad_pcb
@@ -78,7 +74,9 @@ The scripts look for KiCad in the default macOS install location. On other syste
 
 ## X2201 carrier board v4 (ESP32-S3)
 
-[`hardware/x2201-carrier-v4`](../../hardware/x2201-carrier-v4) puts an ESP32-S3 on the carrier, so the car has its own brain. It's the next board, not yet built: the v3 above is the one being made.
+> Archived, not on the current path. See [hardware/ROADMAP.md](../../hardware/ROADMAP.md).
+
+[`hardware/archive/x2201-carrier-v4`](../../hardware/archive/x2201-carrier-v4) puts an ESP32-S3 on the carrier, so the car has its own brain. It's the next board, not yet built: the v3 above is the one being made.
 
 - **Signal path**: EP2 → CRSF (UART) → ESP32-S3 → PWM → ESC. Set the EP2 to serial CRSF output instead of PWM; the ESP32 does the failsafe (throttle to neutral when CRSF stops).
 - **What it adds**: battery voltage sent back to the wheel as telemetry, an OSD on the goggles (MSP over the VTX cable's pins 3 and 4), the lap-timing IR code (no CH32 needed), a status LED, and USB-C on the front edge for flashing and the console.
@@ -90,14 +88,16 @@ The scripts look for KiCad in the default macOS install location. On other syste
 - DRC and the frame's fit check are clean. The ESP32 firmware isn't written yet.
 
 ```bash
-cd hardware/x2201-carrier-v4
+cd hardware/archive/x2201-carrier-v4
 /Applications/KiCad/KiCad.app/Contents/Frameworks/Python.framework/Versions/Current/bin/python3 gen_pcb.py   # FAB=1: gerber/, bom.csv, cpl.csv
 /Applications/KiCad/KiCad.app/Contents/Frameworks/Python.framework/Versions/Current/bin/python3 gen_sch.py   # the schematic, from the board's nets
 ```
 
 ## X2201 carrier board v5 (OpenIPC)
 
-[`hardware/x2201-carrier-v5`](../../hardware/x2201-carrier-v5) is v4 with OpenIPC digital video in place of the Walksnail VTX, so the car only needs a camera plugged in. **Only the circuit is drawn.** The layout waits for the real parts to be measured.
+> Archived, not on the current path. See [hardware/ROADMAP.md](../../hardware/ROADMAP.md).
+
+[`hardware/archive/x2201-carrier-v5`](../../hardware/archive/x2201-carrier-v5) is v4 with OpenIPC digital video in place of the Walksnail VTX, so the car only needs a camera plugged in. **Only the circuit is drawn.** The layout waits for the real parts to be measured.
 
 - **Video**: a ready-made OpenIPC Thinker Base (SSC338Q, 25 × 25 mm, M2 holes on 20 × 20) sits on standoffs over the board. The IMX335 camera plugs into it. The desktop app already receives OpenIPC with an RTL8812AU card.
 - **WiFi**: a BL-M8812EU2 (RTL8812EU) module. It draws up to 5 V 2.x A, far more than the ESC's 1 A BEC, so U4 (LMR51430, 5 V 3 A) makes its own rail from the battery. Its 98 % max duty keeps 5 V even from a flat 2S. It needs a heat sink and the fan. Keep its TX power low indoors.
@@ -114,7 +114,7 @@ cd hardware/x2201-carrier-v4
 - ERC: 0 errors.
 
 ```bash
-cd hardware/x2201-carrier-v5
+cd hardware/archive/x2201-carrier-v5
 /Applications/KiCad/KiCad.app/Contents/Frameworks/Python.framework/Versions/Current/bin/python3 gen_pcb.py   # placed, not routed
 /Applications/KiCad/KiCad.app/Contents/Frameworks/Python.framework/Versions/Current/bin/python3 gen_sch.py   # the schematic, from the board's nets
 ```

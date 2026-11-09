@@ -6,15 +6,6 @@
 
 訊號鏈：`EP2 → CRSF → S3-Zero → PWM → 電調`。EP2 不再直接接電調，R11 再把它的 TX 腳拉高，這就是上電卡死的解法。
 
-## 下單
-
-| 項目 | 內容 |
-|---|---|
-| PCB | 上傳 `x2201-carrier-v7-gerber.zip`：2 層、1.6 mm、1 oz |
-| 元件 | `bom.csv` 上的料號，全部可在立創商城買到 |
-| 模組 | ESP32-S3-Zero、EP2 2400RX 各一 |
-| 插頭線 | ZH1.5 4P ×1、ZH1.5 2P ×3（圖傳用它原裝的 SH1.0 線） |
-
 ## 手焊順序
 
 位置看 `x2201-carrier-v7-assembly.png`，零件編號對照 `bom.csv`。
@@ -48,7 +39,7 @@
 
 ## 第一次上電
 
-上電測試在 [firmware/elrs-bench](../../firmware/elrs-bench/README.md)，韌體的接腳和這塊板相同。
+上電測試在 [firmware/elrs-bench](../../../firmware/elrs-bench/README.md)，韌體的接腳和這塊板相同。
 
 - D3 會擋住 USB 流進電調 BEC，焊好後可以同時插 USB 和電調。
 - J1 的線序（第 1 腳是 S2）還要對照實車確認。

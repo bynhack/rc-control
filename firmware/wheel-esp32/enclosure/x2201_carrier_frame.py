@@ -48,7 +48,7 @@ NUT_D, NUT_H = 4.0, 2.0  # MEASURE: the nut's outside and height (e.g. Wurth 977
 PARTS = [(40.25, 10.0, 57.8, 26.0, 4.0),  # the nearest pads start at x 40.27 (C1)
          (20.85, 15.9, 32.4, 26.0, 2.0),  # the transponder, between the ears
          (5.5, 0.0, 12.3, 25.1, 6.0),  # the plug row along the back edge
-         # v4 (hardware/x2201-carrier-v4), so one frame fits both boards:
+         # v4 (hardware/archive/x2201-carrier-v4), so one frame fits both boards:
          (40.25, 9.8, 61.8, 26.0, 4.0),  # ESP32-S3-MINI-1 (right), the ESC plug and the 3V3 regulator (left)
          (46.0, 0.0, 62.9, 6.8, 3.4),  # under the camera: the USB-C (1.1 past the front edge), the LED, CC resistors
          (NOTCH[0], 6.6, NOTCH[1], 9.6, 1.0),  # U1's decoupling, under the cheeks' notch
