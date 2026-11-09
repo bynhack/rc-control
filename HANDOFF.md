@@ -68,7 +68,7 @@ EP2 手焊，三選一：焊盤朝上緣、焊盤朝下（天線朝上緣），�
 |---|---|---|
 | macOS | | 27.0.1 |
 | 電路板 | KiCad，裝在 `/Applications/KiCad/` | 10.0.7 |
-| 自動佈線 | Java 17（`openjdk@17`）+ Freerouting 1.9.0 | 17.0.15 |
+| 自動佈線 | Java 17（`openjdk@17`）；Freerouting 1.9.0 已在 `hardware/tools/` | 17.0.15 |
 | 韌體 | ESP-IDF，裝在 `~/esp/esp-idf` | v5.5.6 |
 | 桌面端 | Rust/Cargo，FFmpeg 等，見 `docs/en/development.md` | rustc 1.99.1 |
 | 外殼 CAD | Python 虛擬環境：`pip install manifold3d numpy trimesh matplotlib scipy` | |
@@ -77,7 +77,6 @@ EP2 手焊，三選一：焊盤朝上緣、焊盤朝下（天線朝上緣），�
 
 **不在 git 裡，要手動處理：**
 
-- `hardware/tools/freerouting-1.9.0.jar`：到 <https://github.com/freerouting/freerouting/releases/tag/v1.9.0> 下載放到該目錄。大小 5,044,336 bytes，SHA-256 `9084a4888937a7f31f857ecc12aa7a37407f51160e4d2892dff9c9bb47ae3102`。沒有這個檔案時，加 `REUSE_SES=1` 沿用已存的 `.ses`，只要不改板子就夠用。
 - `rc-control.toml`：本機設定，被 git 忽略，要的話自行複製。
 - `~/.claude/projects/-Users-brian-Documents-Project-rc-control/memory/`：Claude 的專案筆記（完整歷史和決策），在這個目錄之外。要連同一起搬；新電腦上的資料夾名稱會隨專案路徑變。
 - `third_party/aviateur` 是 submodule：`git submodule update --init --recursive`。
@@ -121,7 +120,6 @@ idf.py build
 - USB 交叉是手畫的（`draw_usb()`）。板高改變時 `_P` 會跟著 `H`，不用手改。
 - 只動絲印或 CPL 時用 `REUSE_SES=1`，不會重新佈線。
 - 嘉立創預覽常有元件方向差異，每次都要看。
-- 這台 Mac 連不上 `release-assets.githubusercontent.com`（被解析成 127.0.0.1），Freerouting 當時是用瀏覽器下載的。
 
 ## 溝通偏好
 
