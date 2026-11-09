@@ -77,7 +77,7 @@ EP2 手焊，三選一：焊盤朝上緣、焊盤朝下（天線朝上緣），�
 
 **不在 git 裡，要手動處理：**
 
-- `~/.claude/projects/-Users-brian-Documents-Project-rc-control/memory/`：Claude 的專案筆記（完整歷史和決策），在這個目錄之外。要連同一起搬；新電腦上的資料夾名稱會隨專案路徑變。
+- 完整的歷史和決策已整理在 [docs/project-notes.md](docs/project-notes.md)。Claude 的原始筆記在 `~/.claude/projects/` 下，新電腦不需要；綁定短語沒有寫進文件，請從接收機設定取得。
 - `third_party/aviateur` 是 submodule：`git submodule update --init --recursive`。
 
 ## 取得程式碼與重新產生
