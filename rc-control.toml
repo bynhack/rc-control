@@ -1,0 +1,12 @@
+# 本机配置。BETAFPV ELRS Micro TX 1W，经 biaze FT232R 转串口接 CRSF 脚。
+backend = "elrs"
+
+[elrs]
+# FT232R 转接板（序列号 A9GMM867）。换转接板后用 --list-ports 查新名字。
+port = "/dev/cu.usbserial-A9GMM867"
+# EdgeTX 外置模块的标准 CRSF 速率，实测这台高频头认 400000。
+baud = 400000
+# 每 4 ms 一帧（250 Hz），和常见的空中包率一致。
+frame_interval_ms = 4
+steering_invert = true
+throttle_invert = false
