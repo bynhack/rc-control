@@ -2,7 +2,41 @@
 
 從這裡可以在另一台 Mac 上接著做。分支：`feat/esp32-wheel`。
 
-## 目前重點：X2201 控制板 v8，準備下單
+## 目前要做：用 ESP32 接線驗證，不打板
+
+目的：驗證「EP2 → CRSF → ESP32-S3 → PWM → 電調」能不能避開 EP2 上電卡死。**v8 暫緩下單，等測完再決定。**
+
+需要：S3 開發板或 S3-Zero、杜邦線、車上的 EP2 和電調。韌體在 `firmware/elrs-bench`，要有 ESP-IDF（舊 Mac 已裝好且編譯過）。
+
+| 從 | 接到 S3 |
+|---|---|
+| EP2 TX | GPIO13 |
+| EP2 RX | GPIO14 |
+| EP2 5V | 5V |
+| EP2 G | GND |
+| 電調藍 S1 | GPIO8 |
+| 電調黃 S2 | GPIO7 |
+| 電調綠 GND | GND |
+| 電調棕 5V | S3 的 5V（只在第 3 步接，先拔 USB） |
+
+車輪先抬離地面。電池主線一直接電調。
+
+1. **EP2 改 CRSF**：EP2 只接 5V、GND，等 60 秒，連上 `ExpressLRS RX` WiFi，在 `firmware/elrs-bench` 執行 `python3 ep2_serial.py`。電腦沒有 WiFi 時，用手機開 `http://10.0.0.1/hardware.html`，清空 PWM 輸出並儲存。
+2. **燒錄並看訊號**：插 USB，棕線不接。不要接到 P4，燒錄會覆蓋板上韌體。
+   `. ~/esp/esp-idf/export.sh`，然後 `idf.py -p /dev/cu.usbmodemXXXX flash monitor`。打開方向盤和發射端，應顯示「正常」，CH1、CH2 跟著動。
+3. **上電卡死測試（重點）**：拔 USB，接棕線，由電調供電，重複開關電調 10 次，每次看 EP2 能否連上、電調能否解鎖、車能否控制。
+
+結果：
+
+- 10 次都正常：方案 B（S3 隔在中間）的解法成立，可以回頭比較 A、B。
+- 仍會卡：繼續用方案 A 的延遲電路。
+
+注意：
+
+- USB 和電調棕線**絕對不能同時接**（開發板的 5V 可能和 USB 直通）。
+- 測完要改回 PWM，車才能用原接法：連上 EP2 的 WiFi，執行 `python3 ep2_serial.py restore`。備份檔只存在跑第 1 步的那台電腦（`ep2_hardware_backup.json`）。
+
+## X2201 控制板 v8（暫緩下單）
 
 路徑：`hardware/x2201-carrier-v8/`，說明見該目錄的 `README.md`。
 
@@ -35,7 +69,7 @@
 
 EP2 手焊，三選一：焊盤朝上緣、焊盤朝下（天線朝上緣），或插線到 J2。焊盤間距 2.4 mm（實測 TX 到 G 7.2 mm）。
 
-### 下單待辦
+### 下單待辦（接線測試完成後才做）
 
 1. 到嘉立創重新上傳 `x2201-carrier-v8-gerber.zip`、`bom.csv`、`cpl.csv`。**舊的上傳都作廢**（接法已改）。
 2. 看貼片預覽，特別是新增或動過的零件：Q1、D1、J2、J4、C9、J9。方向修正都在 `gen_pcb.py` 的 `CPL_TURN`、`CPL_MOVE_Y`，已對照預覽調過 Q2～Q4、U3、D2、D3、J1、J3、J9。
@@ -55,7 +89,7 @@ EP2 手焊，三選一：焊盤朝上緣、焊盤朝下（天線朝上緣），�
 - 車端韌體還沒寫：讀電量、IR 計圈發射、圖傳 OSD。電量在 EP2 為 PWM 模式時無法用 ELRS 回傳，只能走 OSD。
 - 用 S3 模擬 MSP DisplayPort 給 Ascent 圖傳，沒有實測（社群資料多半是 Avatar）。
 - 圈速要從終點拱門 → P4 → ELRS AUX 通道 → S3，拱門還沒做。
-- 可選：用接線驗證「EP2 → CRSF → S3 → 電調」能否避開卡死，韌體在 `firmware/elrs-bench`（方案 B，不適用於 v8）。步驟見該目錄 README。EP2 要先用 `ep2_serial.py` 改成 CRSF，測完 `python3 ep2_serial.py restore` 改回 PWM。
+- 接線測試見本文件開頭。`firmware/elrs-bench` 是方案 B 的韌體，v8 目前的方案 A 不使用它。
 - 文件 `docs/*/hardware.md`、`hardware/README.md` 還沒更新到 v8。
 
 ### 其他板子
