@@ -42,11 +42,36 @@ CELL = 1.0
 REPLICA_T = 1.2  # the replica's wall, square to its surface
 
 
-def build(ply):
+def resting(mesh):
+    """A mesh of the liner alone: stood on the plane it rests on (the
+    convex hull's big downward face), its vertices with z up from that plane."""
     import trimesh
-    from scipy import ndimage
 
-    p = np.asarray(trimesh.load(ply).vertices, dtype=float)
+    lab = trimesh.graph.connected_component_labels(mesh.face_adjacency, node_count=len(mesh.faces))
+    keep = np.bincount(lab, weights=mesh.area_faces)[lab] > 50  # crumbs out
+    mesh.update_faces(keep)
+    mesh.remove_unreferenced_vertices()
+    v = mesh.vertices - mesh.vertices.mean(0)
+    R = np.linalg.eigh(np.cov(v.T))[1][:, ::-1].T.copy()  # long, wide, thin
+    if np.linalg.det(R) < 0:
+        R[2] *= -1
+    if ((mesh.face_normals @ R.T)[:, 2] * mesh.area_faces).sum() < 0:
+        R[1:] *= -1  # the dome up
+    v = v @ R.T
+    hull = trimesh.Trimesh(v, mesh.faces, process=False).convex_hull
+    down = np.where(hull.face_normals[:, 2] < -0.9, hull.area_faces, 0)
+    n = hull.face_normals[np.argmax(down)]
+    # Turn that face's normal onto -z (Rodrigues).
+    k = np.cross(n, [0, 0, -1.0])
+    s, c = np.linalg.norm(k), -n[2]
+    K = np.array([[0, -k[2], k[1]], [k[2], 0, -k[0]], [-k[1], k[0], 0]])
+    v = v @ (np.eye(3) + K + K @ K * ((1 - c) / s ** 2)).T
+    v[:, 2] -= v[:, 2].min()
+    return v
+
+
+def on_turntable(p):
+    """A point cloud of the liner on the turntable: the liner's points, z up from the turntable."""
     # The turntable: RANSAC on a tenth of the points, then a least-squares fit.
     rng = np.random.default_rng(0)
     sub = p[::10]
@@ -73,7 +98,18 @@ def build(ply):
     pts = np.c_[(p - c0) @ e1, (p - c0) @ e2, h]
     pts = pts[pts[:, 2] > 2.5]  # off the turntable
     m = np.median(pts[:, :2], 0)
-    pts = pts[np.linalg.norm(pts[:, :2] - m, axis=1) < 75]  # the liner, not the turntable's markers
+    return pts[np.linalg.norm(pts[:, :2] - m, axis=1) < 75]  # the liner, not the turntable's markers
+
+
+def build(ply):
+    import trimesh
+    from scipy import ndimage
+
+    scan = trimesh.load(ply)
+    if isinstance(scan, trimesh.Trimesh) and len(scan.faces):
+        pts = resting(scan)
+    else:
+        pts = on_turntable(np.asarray(scan.vertices, dtype=float))
     # Long axis along x, centred.
     c = pts[:, :2].mean(0)
     v = np.linalg.eigh(np.cov((pts[:, :2] - c).T))[1][:, 1]
@@ -155,34 +191,55 @@ def liner_shell():
 def replica():
     """The liner as the scan saw it: a REPLICA_T shell under the (smoothed)
     top, only over the cells the scan saw, small gaps closed."""
-    from scipy import ndimage
-
     d = np.load(NPZ)
     x, y = d["x"], d["y"]
-    top = ndimage.gaussian_filter(d["top"].astype(float), 0.8)
+    top = smooth_top(d)
+    under = top - normal_t(top, REPLICA_T)
+    skin = heightfield(x, y, top) - heightfield(x, y, under)
+    out = skin ^ prism(x, y, footprint(d))
+    parts = sorted(out.decompose(), key=lambda m: -m.volume())
+    return parts[0]  # crumbs off the edges dropped
+
+
+def smooth_top(d):
+    from scipy import ndimage
+
+    return ndimage.gaussian_filter(d["top"].astype(float), 0.8)
+
+
+def normal_t(top, t):
+    """A vertical depth that is `t` square to the surface (at most 3 t, on steep sides)."""
+    gx, gy = np.gradient(top, CELL)
+    return np.minimum(t * np.sqrt(1 + gx ** 2 + gy ** 2), 3 * t)
+
+
+def footprint(d, openings=True):
+    """The cells the liner covers: small gaps closed, ragged edges trimmed.
+    openings=False fills its roof openings (and the screw hole) too."""
+    from scipy import ndimage
+
     seen = ndimage.binary_closing(d["seen"], iterations=2)
     holes = ndimage.binary_fill_holes(seen) & ~seen
     lab, n = ndimage.label(holes)
     for k in range(1, n + 1):  # specks in the scan: filled; the openings (and the screw hole) stay
-        if (lab == k).sum() < 8:
+        if not openings or (lab == k).sum() < 8:
             seen[lab == k] = True
-    seen = ndimage.binary_opening(seen, iterations=1)  # ragged edges
-    gx, gy = np.gradient(top, CELL)
-    under = top - np.minimum(REPLICA_T * np.sqrt(1 + gx ** 2 + gy ** 2), 3 * REPLICA_T)
-    skin = heightfield(x, y, top) - heightfield(x, y, under)
-    cols = []  # the seen cells, as runs of boxes along y
+    return ndimage.binary_opening(seen, iterations=1)  # ragged edges
+
+
+def prism(x, y, mask, z0=-10.0, z1=40.0):
+    """The mask's cells as a solid from z0 to z1 (runs of boxes along y)."""
+    cols = []
     for i in range(len(x)):
         j = 0
         while j < len(y):
-            if seen[i, j]:
+            if mask[i, j]:
                 j0 = j
-                while j < len(y) and seen[i, j]:
+                while j < len(y) and mask[i, j]:
                     j += 1
-                cols.append(box(x[i] - CELL / 2, y[j0] - CELL / 2, -10, x[i] + CELL / 2, y[j - 1] + CELL / 2, 40))
+                cols.append(box(x[i] - CELL / 2, y[j0] - CELL / 2, z0, x[i] + CELL / 2, y[j - 1] + CELL / 2, z1))
             j += 1
-    out = skin ^ Manifold.batch_boolean(cols, OpType.Add)
-    parts = sorted(out.decompose(), key=lambda m: -m.volume())
-    return parts[0]  # crumbs off the edges dropped
+    return Manifold.batch_boolean(cols, OpType.Add)
 
 
 if __name__ == "__main__":

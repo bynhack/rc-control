@@ -4,11 +4,9 @@ fan, all inside the shell in the room the test cage (x2201_cage.py)
 describes. The room is low (24 at the roof's highest point, 20 at the
 windscreen's top edge), so everything is stacked as flat as it goes.
 
-One part, x2201_fpv_mount.stl, printed rails down, no support (the plate
-bridges between the rails):
-  - two rails on the chassis' two flat strips either side of its middle
-    channel (3M tape), and a plate across them, BRIDGE over the channel's
-    screw posts and wiring;
+One part, x2201_fpv_mount.stl, printed plate down, no support:
+  - a plate flat on the chassis' top (3M tape): everything that stood on the
+    chassis under the cab comes off, so the plate needs no rails to clear it;
   - the VTX on the plate, between four posts beside its corners. Pads on the
     posts' tops reach in over its corners, and the fan screws onto them. The
     posts only stand beside the VTX, so it slides in from the back under the
@@ -21,16 +19,16 @@ bridges between the rails):
 Hardware:
   4x M2 x 9 self-tapping   fan -> pads (FAN_T + PAD_T)
   2x M2 x 4                camera side holes, through the cheeks
-  3M VHB tape              rails -> chassis strips
+  3M VHB tape              plate -> chassis top
   thermal pad or tape      VTX -> plate
 
-The fan has only 1 to 4 mm of air over it under the roof; a vent or scoop
-cut in the roof over it would let it breathe (and the alloy shell gets hot).
+The fan is right under the liner's roof; it breathes through the liner's
+roof openings over it, and the alloy shell over those gets hot.
 The VTX's antenna must get out of the alloy shell: that is not in this part.
 
 Coordinates as in x2201_cage.py: x = forward from the cage's back end (the
 windscreen's foot at x = L), y = across (centred), z = up from the chassis'
-strips.
+top.
 
 Run:  python x2201_fpv_mount.py  -> out/x2201_fpv_mount.stl, out/x2201_fpv_preview.png
 """
@@ -42,7 +40,7 @@ import numpy as np
 from manifold3d import Manifold
 
 from cad import OUT, box, cyl, preview, rbox, to_trimesh
-from x2201_cage import L, MID_W, Z_COWL, Z_WS_TOP, shell_room
+from x2201_cage import L, Z_COWL, Z_WS_TOP, shell_room
 from x2201_liner import NPZ, liner_room, liner_shell
 
 FIT = 0.3
@@ -57,9 +55,8 @@ FAN_W, FAN_HOLES = 25.0, 20.0
 FAN_T = 7.0  # 2507 fan
 
 # ---- mount -----------------------------------------------------------------------------
-BRIDGE = 1.0  # MEASURE: the plate's underside over the strips: room over the channel's posts and wires
 PLATE = 1.2  # thin: the fan is right under the liner at its back corners
-RAIL_Y = (MID_W / 2 + 1.0, MID_W / 2 + 11.0)  # rails: on the strips, clear of the channel
+PLATE_W = 52.0
 AIR_GAP = 2.5  # VTX top to the fan's underside
 PAD_T = 2.0  # pads on the post tops, inside the air gap
 POST, POST_L = 3.5, 6.0  # posts beside the VTX's corners: thick (across), long (along x)
@@ -70,7 +67,7 @@ CHEEK_T, CHEEK_L = 2.0, 11.0
 LENS_CLEAR = 1.0  # lens and body to the windscreen, level
 TILT = (-15, 15)  # tilt range checked, nose down .. up
 
-z0 = BRIDGE + PLATE  # VTX's underside
+z0 = PLATE  # VTX's underside
 z_fan = z0 + VTX_H + AIR_GAP  # fan underside = pad tops
 pocket = VTX_W / 2 + FIT
 pad_in = FAN_HOLES / 2 - 2.3  # pads reach in this far: enough round the fan screws
@@ -128,11 +125,7 @@ front = pivot_x + CHEEK_L / 2
 
 
 def plate():
-    out = rbox(back, -RAIL_Y[1], BRIDGE, front - back, 2 * RAIL_Y[1], PLATE, 2.5)
-    for sy in (-1, 1):
-        y0, y1 = sorted((sy * RAIL_Y[0], sy * RAIL_Y[1]))
-        out += rbox(back, y0, 0, front - back, y1 - y0, BRIDGE + 0.01, 1.0)
-    return out
+    return rbox(back, -PLATE_W / 2, 0, front - back, PLATE_W, PLATE, 2.5)
 
 
 def vtx_frame():
@@ -184,11 +177,6 @@ def camera(tilt=0.0):
     return camera_at(pivot_x, tilt)
 
 
-def channel():
-    """The chassis' middle channel, its posts and wires: the plate's underside must clear it."""
-    return box(back - 5, -MID_W / 2, -5, front + 5, MID_W / 2, BRIDGE - 0.01)
-
-
 def main():
     os.makedirs(OUT, exist_ok=True)
     m = mount()
@@ -199,7 +187,6 @@ def main():
     checks = {f"mount x {k}": (m ^ v).volume() for k, v in parts.items()}
     checks["VTX x fan"] = (vtx() ^ fan()).volume()
     checks["VTX x camera"] = (vtx() ^ camera()).volume()
-    checks["mount x channel"] = (m ^ channel()).volume()
     # The VTX slides in from the back, under the pads.
     checks["mount x VTX's way in"] = (m ^ box(back - 40, -VTX_W / 2, z0, vtx_x + VTX_W / 2, VTX_W / 2, z0 + VTX_H)).volume()
     checks["fan not seated"] = 0.0 if (m ^ fan().translate([0, 0, -0.2])).volume() > 1 else 1.0
