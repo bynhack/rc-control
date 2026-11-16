@@ -13,7 +13,7 @@ from schgen import write  # noqa: E402
 BOARD = os.path.join(HERE, "x2201-carrier-v10.kicad_pcb")
 MOS = {"1": "G", "2": "S", "3": "D"}
 SYMBOL = {
-    "U1": ("RF_Module:ESP32-S3-MINI-1", None),
+    "U1": ("Connector_Generic:Conn_01x18", None),  # the SuperMini, on its two rows of 9
     "U3": ("Regulator_Linear:AP2204K-1.5", None),  # AP2112K-3.3: the same pins
     "J9": ("Connector:USB_C_Receptacle_USB2.0_16P", None),
     "TP": ("Connector:TestPoint", None),
@@ -23,28 +23,34 @@ SYMBOL = {
     "Q": ("Device:Q_NMOS", MOS),
     "U2": ("Sensor_Motion:LSM6DS3", None),
     "U4": ("Regulator_Switching:LMR51430", None),
+    "U5": ("rc_control:DRV8874", None),
     "W": ("Connector_Generic:Conn_01x01", None),
     "P": ("Connector_Generic:Conn_01x03", None),
+    "J7": ("Connector_Generic:Conn_01x02", None),
     "R": ("Device:R", None), "C": ("Device:C", None), "L": ("Device:L", None),
 }
 PINMAP = {}
 NOTES = {
     "W1": "battery +, soldered", "W2": "battery -, soldered",
-    "W3": "ESC +, soldered (external brushed ESC, no BEC)", "W4": "ESC -, soldered",
     "Q1": "reverse guard in the battery's negative lead, drain to BAT-, source to GND: on the right way round, "
-          "off reversed",
-    "U4": "5 V 3 A buck, the BEC: 0.6 V x (1 + 22k / 3k). EN is the switch, held off by R16",
-    "J6": "switch: short pin 1 to pin 2 to turn the BEC on. Motor current does not go through it",
-    "P1": "ESC signal lead: 1 signal (IO7), 2 open (the ESC has no BEC), 3 GND",
-    "P2": "servo: 1 signal, 2 5V, 3 GND",
-    "J2": "the EP2 on a plug, CRSF: 1 its TX (to IO13), 2 its RX (from IO14), 3 5V, 4 GND",
-    "J3": "VTX, 6-pin plug, 4 wires: 1 red power, 2 black GND, 3 white its RX, 4 grey its TX, 5-6 unused",
-    "J4": "fan: 1 5V, 2 GND, on whenever the battery is in",
-    "U1": "IO0 BOOT, IO6 VTX on, IO7 ESC throttle, IO8 servo, IO9 VBAT, IO10 MSP RX, IO11 MSP TX, IO13 CRSF RX, "
-          "IO14 CRSF TX, IO15 IR, IO16 SDA, IO17 SCL, IO18 gyro INT, IO19/20 USB",
+          "off reversed. Protects the whole board, the motor driver included",
+    "U4": "5 V 3 A buck, the BEC: 0.6 V x (1 + 22k / 3k). EN from the button (D4) or the S3's TX (D5), held off by R16",
+    "U5": "onboard brushed ESC, PWM mode (PMODE high): IN1/IN2 = IO7/IO4. 10 forward, 01 reverse, 11 brake, 00 coast. "
+          "ITRIP = 3.3 V / (450 uA/A x 1.5k) = 4.9 A, fixed off-time, auto retry (IMODE low). Asleep when 3V3 is off",
+    "J7": "motor, ZH2.0 (PH) 2P side entry: 1 OUT1, 2 OUT2",
+    "J6": "power button, momentary, ZH1.5 2P: 1 battery, 2 BTN. Press: on (D4 lifts EN, the S3 boots and holds EN "
+          "with TX). Press again: Q6 pulls RX low, the S3 drops TX, off on release",
+    "P2": "servo, ZH1.5 3P: 1 signal, 2 5V, 3 GND",
+    "J2": "the EP2, ZH1.5 4P: 1 its TX (to IO13), 2 its RX (from IO12), 3 5V, 4 GND",
+    "J3": "VTX, ZH1.5 4P: 1 power (battery, switched by Q2), 2 GND, 3 its RX, 4 its TX",
+    "J4": "fan: 1 5V, 2 GND, on whenever the board is on",
+    "U1": "ESP32-S3 SuperMini, hand-soldered on header pins. Pins 1-9 (top row from the USB end): 5V GND 3V3 IO13 IO12 "
+          "IO11 IO10 IO9 IO8; 10-18: TX RX IO1-IO7. IO13/12 CRSF RX/TX, IO11/10 MSP TX/RX, IO9 VBAT, IO8 servo, "
+          "IO7/IO4 motor forward/reverse, IO6 VTX on, IO5 IR, IO1/2/3 SDA/SCL/gyro INT, TX (IO43) power hold, "
+          "RX (IO44) button",
     "U2": "gyro, I2C 0x6A (SA0 low, CS high); aux bus unused",
     "Q2": "VTX power, on when IO6 is high (Q3); off at reset",
-    "D3": "the board's 5 V into VIN; D2 is USB into VIN, so the two never meet",
+    "D3": "the board's 5 V into the SuperMini's 5V pin and the EP2; with USB in, VBUS stays on the module's side",
 }
 
 
@@ -62,7 +68,7 @@ def parts():
                 continue
             nets.setdefault(p.GetNumber(), p.GetNetname() or "NC")
         if ref == "U1":
-            for k in range(1, 66):
+            for k in range(1, 19):
                 nets.setdefault(str(k), "NC")
         if ref == "U2":
             for k in ("9", "10", "11"):
@@ -90,7 +96,7 @@ def parts():
         x, y = x0 + dx * (i[0] // rows), 40 + dy * (i[0] % rows)
         i[0] += 1
         out.append((ref, sym, m.GetValue(), "", (x, y), nets, NOTES.get(ref, "")))
-    flags = ["5V", "GND", "VBAT", "BAT_N", "VTX", "VIN", "VBUS"]
+    flags = ["5V", "GND", "VBAT", "BAT_N", "VTX", "VIN", "3V3"]  # 3V3 comes from the SuperMini's own LDO
     out += [(f"#FLG{i + 1:02d}", "power:PWR_FLAG", "PWR_FLAG", "", (60 + 15 * i, 230), {"1": n}, "") for i, n in enumerate(flags)]
     return out
 

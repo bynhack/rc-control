@@ -1,14 +1,15 @@
-"""Main board v10 for the X2201 (stage 1 in ../ROADMAP.md): the battery comes in here; the board feeds an
-external brushed ESC without a BEC (RZ7886 module, 7.5 A, 15 A peak) and makes the 5 V itself.
+"""Main board v10 for the X2201 (stage 1 in ../ROADMAP.md): 76 x 20, everything on one board, the brushed ESC
+included. The battery comes in here and nowhere else.
 
-  battery --> W1/W2 --> Q1 (reverse guard) --+--> W3/W4 --> ESC (no BEC) --> 260 motor
-                                             +--> U4 5 V 3 A buck, the BEC --> S3, EP2, servo, fan, IR
-  EP2 --CRSF--> J2 --> ESP32-S3-MINI-1 --PWM--> P2 servo, P1 ESC signal;  LSM6DS3TR-C gyro on I2C
-  J6 switch closes VBAT onto U4 EN. Open: no 5 V, so the S3 is off and the ESC gets no pulses.
+  battery --> W1/W2 --> Q1 (reverse guard) --+--> U5 DRV8874 (ESC, 4.9 A limit) --> J7 ZH2.0 --> 260 motor
+                                             +--> U4 5 V 3 A buck, the BEC --> SuperMini, EP2, servo, fan, IR
+  EP2 --CRSF--> J2 --> ESP32-S3 SuperMini --PWM--> P2 servo;  IO7 / IO4 --> U5 forward / reverse
+  J6 power button: press on (D4 lifts EN, the S3 holds it with TX through D5); press again, the S3 lets go: off.
 
-P1 pin 2 is left open: the ESC has no BEC, and the board's 5 V must not go out to it. The EP2's TX pad only ever
-reaches an S3 input. D2 / D3 keep USB and the 5 V apart. Parts on the top side; the wire pads and the two pin
-headers are hand-soldered.
+The SuperMini is hand-soldered on header pins, its USB-C off the left edge, with low parts underneath it. Every
+plug is a side-entry ZH1.5 (the motor's a ZH2.0, off the right end), its mouth on an edge, so nothing stands up.
+The EP2's TX pad only ever reaches an S3 input. JLC places the SMD parts on the top; the module and the two
+battery wires are hand-soldered.
 
 Run with KiCad's Python:
   /Applications/KiCad/KiCad.app/Contents/Frameworks/Python.framework/Versions/Current/bin/python3 gen_pcb.py
@@ -41,8 +42,25 @@ ZH4 = "JST_ZH_B4B-ZR-SM4-TF_1x04-1MP_P1.50mm_Vertical"
 ZH2 = "JST_ZH_B2B-ZR-SM4-TF_1x02-1MP_P1.50mm_Vertical"
 SH6 = "JST_SH_BM06B-SRSS-TB_1x06-1MP_P1.00mm_Vertical"
 HDR3 = "PinHeader_1x03_P2.54mm_Vertical"
-WIRE = "SolderWire-0.75sqmm_1x01_D1.25mm_OD3.5mm"
+WIRE = "SolderWire-0.5sqmm_1x01_D0.9mm_OD2.1mm"  # 20 AWG
+ZH4S = "JST_ZH_S4B-ZR-SM4A-TF_1x04-1MP_P1.50mm_Horizontal"
+ZH2S = "JST_ZH_S2B-ZR-SM4A-TF_1x02-1MP_P1.50mm_Horizontal"
+ZH3S = "JST_ZH_S3B-ZR-SM4A-TF_1x03-1MP_P1.50mm_Horizontal"
+PH2S = "JST_PH_S2B-PH-SM4-TB_1x02-1MP_P2.00mm_Horizontal"
+HTSSOP = "HTSSOP-16-1EP_4.4x5mm_P0.65mm_EP3.4x5mm_Mask2.46x2.31mm"  # thermal vias added by hand, 0.3 mm
+SH6S = "JST_SH_SM06B-SRSS-TB_1x06-1MP_P1.00mm_Horizontal"
+HDR3H = "PinHeader_1x03_P2.54mm_Horizontal"
 pcbgen.LCSC[("DMN3008SFG-7", "Diodes_PowerDI3333-8")] = "C384563"
+# side-entry plugs, JST, checked on lcsc.com 2026-11-16
+for _v in ("IR LED", "fan", "button"):
+    pcbgen.LCSC[(f"ZH1.5 2P side ({_v})", "JST_ZH_S2B-ZR-SM4A-TF_1x02-1MP_P1.50mm_Horizontal")] = "C265329"
+pcbgen.LCSC[("ZH1.5 4P side (EP2)", "JST_ZH_S4B-ZR-SM4A-TF_1x04-1MP_P1.50mm_Horizontal")] = "C485354"
+pcbgen.LCSC[("ZH1.5 4P side (VTX)", "JST_ZH_S4B-ZR-SM4A-TF_1x04-1MP_P1.50mm_Horizontal")] = "C485354"
+pcbgen.LCSC[("ZH1.5 3P side (servo)", "JST_ZH_S3B-ZR-SM4A-TF_1x03-1MP_P1.50mm_Horizontal")] = "C72591"
+pcbgen.LCSC[("ZH2.0 2P side (motor)", "JST_PH_S2B-PH-SM4-TB_1x02-1MP_P2.00mm_Horizontal")] = "C295747"
+pcbgen.LCSC[("DRV8874PWPR", "HTSSOP-16-1EP_4.4x5mm_P0.65mm_EP3.4x5mm_Mask2.46x2.31mm")] = "C1855818"
+pcbgen.LCSC[("22nF", "C_0402_1005Metric")] = "C1532"    # 50 V X7R, the DRV8874's flying cap
+pcbgen.LCSC[("1.5k", "R_0402_1005Metric")] = "C25867"   # the DRV8874's IPROPI
 HDR = "Connector_PinHeader_2.54mm"
 
 
@@ -81,57 +99,61 @@ def npth(ref, x, y, d=2.2):
 for i, (x, y) in enumerate(HOLES):
     npth(f"MH{i + 1}", x, y)
 
-# ---- U1: ESP32-S3-MINI-1 at the left end, turned so the antenna points off the board's left edge ----------
-# Turned 90: module pads 1-15 run along the bottom (y = CY + 7), 16-30 up the right side (x = CX + 7),
-# 31-45 along the top, and the ground pads 46-60 down the left side by the antenna.
-CX, CY = 13.5, 10.0
-ANT = CX - 13.21 + 5.6  # the copper keepout, from the left edge to just short of the module's first pads
-GPIO = {3: "3V3", 4: "BOOT", 10: "VTX_EN", 11: "THR", 12: "SERVO", 13: "VBAT_ADC", 14: "MSP_RX", 15: "MSP_TX",  # IO6..IO11
-        17: "CRSF_RX", 18: "CRSF_TX", 19: "IR", 20: "SDA", 21: "SCL", 22: "IMU_INT",  # IO13..IO18
-        23: "USB_DM", 24: "USB_DP", 45: "EN"}
-U1_NETS = {str(k): v for k, v in GPIO.items()}
-for n in (1, 2, 42, 43, *range(46, 66)):
-    U1_NETS[str(n)] = "GND"
-U1 = place("Espressif", "ESP32-S3-MINI-1", "U1", "ESP32-S3-MINI-1-N8", CX, CY, 90, U1_NETS)
-# the recovery pads, on the back under the module: hold B on G while powering up to force the ROM loader
-place("TestPoint", "TestPoint_Pad_1.5x1.5mm", "TP1", "BOOT", 11.0, 7.0, 0, {"1": "BOOT"}, side="B")
-place("TestPoint", "TestPoint_Pad_1.5x1.5mm", "TP3", "G", 11.0, 13.0, 0, {"1": "GND"}, side="B")
-# EN's pull-up and delay, in the strip above the module, beside EN (pad 45, the top row's left end)
-r04("R21", "10k", 9.2, 1.15, 0, "3V3", "EN")
-c("C8", "1uF", 11.4, 1.15, 0, "EN", "GND", C0402)
+# ---- U1: an ESP32-S3 SuperMini, hand-soldered through its two rows of 9 holes ---------------------
+# 23.5 x 18, rows 15.24 apart, 2.54 pitch. Its USB-C hangs off the board's left edge; its chip antenna is at
+# the other end, so no copper under that end. Mount it on header pins (the plastic spacer keeps its bottom
+# pads off this board's copper). Top row from the USB end: 5V GND 3V3 13 12 11 10 9 8; bottom row: TX RX 1-7.
+MX0 = 0.0                                         # the module's USB end, at the board's left edge
+MCOL = [MX0 + 1.59 + 2.54 * k for k in range(9)]  # pin columns
+MTOP, MBOT = 2.38, 17.62                          # the two rows
+# the chip antenna sits at the far end, toward the bottom row (module y 7.8 to 14.8 from its top edge):
+# no copper under it, 0.5 mm round it and 2 mm past the module's end; the strips toward both rows stay open
+# for the module's tracks (on board y that is 8.8 to 15.8; this board sits 2.5 mm or more below it)
+ANT = (MX0 + 20.0, 8.3, MX0 + 25.5, 15.6)
+TOP_ROW = ["VIN", "GND", "3V3", "CRSF_RX", "CRSF_TX", "MSP_TX", "MSP_RX", "VBAT_ADC", "SERVO"]  # 5V 3V3 13 12 11 10 9 8
+BOT_ROW = ["HOLD", "BTN_SENSE", "SDA", "SCL", "IMU_INT", "M_REV", "IR", "VTX_EN", "M_FWD"]   # TX RX 1 2 3 4 5 6 7
+MPIN = ["5V", "GND", "3V3", "IO13", "IO12", "IO11", "IO10", "IO9", "IO8", "TX", "RX", "IO1", "IO2", "IO3", "IO4", "IO5", "IO6", "IO7"]
 
-# ---- top edge: the EP2, the servo, the ESC's signal, the switch ---------------------------------
-# the EP2, off the board on a plug: its TX pad only ever reaches an S3 input
-J2 = place("Connector_JST", ZH4, "J2", "ZH1.5 4P (EP2)", 28.2, 3.9, 0,
-           {"1": "CRSF_RX", "2": "CRSF_TX", "3": "VIN", "4": "GND", "MP": "GND"})
-# the ESC's servo lead: signal, its V pin (open: this ESC has no BEC), ground
-P1 = place(HDR, HDR3, "P1", "2.54 3P (ESC)", 35.8, 2.4, 90, {"1": "THR", "3": "GND"})
-P2 = place(HDR, HDR3, "P2", "2.54 3P (servo)", 44.6, 2.4, 90, {"1": "SERVO", "2": "5V", "3": "GND"})
-# closing the switch ties EN to the battery; R16 holds it off, so the buck stays down
-J6 = place("Connector_JST", ZH2, "J6", "ZH1.5 2P (switch)", 55.6, 3.9, 0, {"1": "VBAT", "2": "EN_SW", "MP": "GND"})
 
-# ---- bottom edge: USB-C beside the module, then the IR, fan and VTX plugs --------------------
-JX = 27.3
-place("Connector_USB", "USB_C_Receptacle_HRO_TYPE-C-31-M-12", "J9", "USB-C", JX, H - 2.8, 0, {
-    "A1": "GND", "B12": "GND", "B1": "GND", "A12": "GND", "B4": "VBUS", "A9": "VBUS", "A4": "VBUS", "B9": "VBUS",
-    "A5": "CC1", "B5": "CC2", "A6": "USB_DP", "B6": "USB_DP", "A7": "USB_DM", "B7": "USB_DM", "SH": "GND"})
-J5 = place("Connector_JST", ZH2, "J5", "ZH1.5 2P (IR LED)", 37.1, H - 3.99, 180,
-           {"1": "LEDA", "2": "LEDK", "MP": "GND"})
-J4 = place("Connector_JST", ZH2, "J4", "ZH1.5 2P (fan)", 45.4, H - 3.99, 180, {"1": "5V", "2": "GND", "MP": "GND"})
-J3 = place("Connector_JST", SH6, "J3", "SH1.0 6P (VTX)", 54.6, H - 2.9, 0,
-           {"1": "VTX", "2": "GND", "3": "VTX_RX", "4": "VTX_TX", "MP": "GND"})
+def supermini(ref, nets):
+    m = pcbnew.FOOTPRINT(pcbgen.board)
+    m.SetReference(ref)
+    m.SetValue("ESP32-S3 SuperMini")
+    m.SetPosition(pcbgen.pt(MX0, 0))
+    pcbgen.board.Add(m)
+    for k, (x, y) in enumerate([(cx, MTOP) for cx in MCOL] + [(cx, MBOT) for cx in MCOL]):
+        p = pcbnew.PAD(m)
+        p.SetNumber(str(k + 1))
+        p.SetAttribute(pcbnew.PAD_ATTRIB_PTH)
+        p.SetShape(pcbnew.PAD_SHAPE_RECTANGLE if k == 0 else pcbnew.PAD_SHAPE_CIRCLE)
+        p.SetSize(pcbnew.VECTOR2I(mm(1.7), mm(1.7)))
+        p.SetDrillSize(pcbnew.VECTOR2I(mm(1.0), mm(1.0)))
+        p.SetLayerSet(pcbnew.PAD.PTHMask())
+        p.SetPosition(pcbgen.pt(x, y))
+        m.Add(p)
+        if nets[k]:
+            p.SetNet(pcbgen.net(nets[k]))
+    # outline on the silk only: low parts sit under the module, so it has no courtyard of its own
+    for layer, (x0, y0, x1, y1) in ((pcbnew.F_SilkS, (MX0, 1.0, MX0 + 23.5, 19.0)),):
+        for a_, b_ in (((x0, y0), (x1, y0)), ((x1, y0), (x1, y1)), ((x1, y1), (x0, y1)), ((x0, y1), (x0, y0))):
+            sh = pcbnew.PCB_SHAPE(m)
+            sh.SetShape(pcbnew.SHAPE_T_SEGMENT)
+            sh.SetStart(pcbgen.pt(*a_))
+            sh.SetEnd(pcbgen.pt(*b_))
+            sh.SetLayer(layer)
+            sh.SetWidth(mm(0.12 if layer == pcbnew.F_SilkS else 0.05))
+            m.Add(sh)
+    m.Reference().SetVisible(False)
+    m.Value().SetVisible(False)
+    return m
 
-# ---- between J2 and J9: the 3V3 LDO, the two diodes that keep USB and the 5 V apart -----------
-place("Package_TO_SOT_SMD", "SOT-23-5", "U3", "AP2112K-3.3", 25.0, 9.45, 0, {"1": "VIN", "2": "GND", "3": "VIN", "5": "3V3"})
-c("C9", "22uF", 28.4, 9.45, 90, "VIN", "GND")
-place("Diode_SMD", SOD, "D3", "B5819WS", 30.6, 9.45, 90, {"1": "VIN", "2": "5V"})
-place("Diode_SMD", SOD, "D2", "B5819WS", 32.65, 9.45, 90, {"1": "VIN", "2": "VBUS"})
 
-# ---- middle: CC resistors, the gyro, 3V3 decoupling, IR driver, the battery divider ----------
-r04("R12", "5.1k", 34.4, 8.0, 90, "CC1", "GND")
-r04("R13", "5.1k", 34.4, 10.1, 90, "CC2", "GND")
-# the gyro (I2C 0x6A: SA0 low, CS high; aux bus unused). Its caps and pull-ups sit where v10 had them.
-GX, GY = 38.7, 8.5
+U1 = supermini("U1", TOP_ROW + BOT_ROW)
+
+# ---- under the SuperMini: the gyro, the VTX switch, the IR driver, the battery divider, D3 ---------
+# The module stands on header pins (about 2.5 mm), so these low parts (1.1 mm at most) sit between the two
+# rows, clear of the pins and of the antenna end.
+GX, GY = 6.8, 7.0  # the gyro (I2C 0x6A: SA0 low, CS high; aux bus unused); caps and pull-ups keep v10's spacing
 place("Package_LGA", "LGA-14_3x2.5mm_P0.5mm_LayoutBorder3x4y", "U2", "LSM6DS3TR-C", GX, GY, 0, {
     "1": "GND", "2": "GND", "3": "GND", "4": "IMU_INT", "5": "3V3", "6": "GND", "7": "GND", "8": "3V3",
     "12": "3V3", "13": "SCL", "14": "SDA"})
@@ -139,57 +161,95 @@ c("C12", "100nF", GX - 2.9, GY - 1.0, 90, "3V3", "GND", C0402)
 c("C13", "100nF", GX - 2.9, GY + 1.2, 90, "3V3", "GND", C0402)
 r04("R9", "4.7k", GX + 3.1, GY - 1.0, 90, "3V3", "SDA")
 r04("R10", "4.7k", GX + 4.2, GY - 1.0, 90, "3V3", "SCL")
-c("C14", "22uF", 47.8, 6.4, 90, "5V", "GND")  # the servo's surges, by its plug
-c("C10", "22uF", 43.0, 10.8, 90, "3V3", "GND")
-c("C6", "100nF", 41.3, 10.8, 90, "3V3", "GND", C0402)
-r04("R11", "10k", 36.6, 5.0, 0, "THR", "GND")  # holds the ESC's signal low while the S3 restarts
-q("Q4", "AO3400", 46.0, 10.4, 0, "IR", "GND", "LEDK")
-r04("R8", "100k", 45.6, 7.9, 0, "IR", "GND")
-r("R6", "33", 49.0, 10.4, 90, "LEDA", "5V")
-r04("R14", "100k", 50.9, 5.4, 90, "VBAT", "VBAT_ADC")
-r04("R15", "22k", 50.9, 7.5, 90, "VBAT_ADC", "GND")
-c("C11", "100nF", 50.9, 9.6, 90, "VBAT_ADC", "GND", C0402)
-
-# ---- between J6 and J3: the VTX's switch and UART, the module's EN ---------------------------
+r04("R14", "100k", 14.0, 5.5, 90, "VBAT", "VBAT_ADC")
+r04("R15", "22k", 15.2, 5.5, 90, "VBAT_ADC", "GND")
+c("C11", "100nF", 16.4, 5.5, 90, "VBAT_ADC", "GND", C0402)
+# the board's 5 V into the module's 5V pin (and the EP2), through D3: with USB in, VBUS stays on the module's side
+place("Diode_SMD", SOD, "D3", "B5819WS", 16.5, 8.3, 0, {"1": "VIN", "2": "5V"})
 # the VTX on the S3's word: VTX_EN high turns Q3 on, Q3 pulls Q2's gate down, Q2 passes the battery; off at reset
-q("Q3", "AO3400", 53.6, 9.0, 0, "Q3G", "GND", "Q2G")
-q("Q2", "AO3401", 57.6, 9.0, 0, "Q2G", "VBAT", "VTX")
-r04("R2", "100k", 52.2, 12.5, 90, "Q2G", "VBAT")
-r04("R7", "100k", 53.3, 12.5, 90, "Q3G", "GND")
-r04("R4", "1k", 54.4, 12.5, 90, "VTX_EN", "Q3G")
-r04("R19", "1k", 55.5, 12.5, 90, "MSP_TX", "VTX_RX")
-r04("R20", "1k", 56.6, 12.5, 90, "MSP_RX", "VTX_TX")
+q("Q3", "AO3400", 4.5, 11.5, 0, "Q3G", "GND", "Q2G")
+q("Q2", "AO3401", 9.0, 11.5, 0, "Q2G", "VBAT", "VTX")
+r04("R4", "1k", 4.5, 14.8, 0, "VTX_EN", "Q3G")
+r04("R7", "100k", 7.0, 14.8, 0, "Q3G", "GND")
+r04("R2", "100k", 9.5, 14.8, 0, "Q2G", "VBAT")
 
+# ---- top edge, plugs facing out: the EP2, the VTX, the servo. All ZH1.5 side-entry ---------------
+# turned 180 so the mouth sits on the edge and the pads face in
+J2 = place("Connector_JST", ZH4S, "J2", "ZH1.5 4P side (EP2)", 31.2, 4.0, 180,
+           {"1": "CRSF_RX", "2": "CRSF_TX", "3": "VIN", "4": "GND", "MP": "GND"})
+J3 = place("Connector_JST", ZH4S, "J3", "ZH1.5 4P side (VTX)", 42.0, 4.0, 180,
+           {"1": "VTX", "2": "GND", "3": "VTX_RX", "4": "VTX_TX", "MP": "GND"})
+P2 = place("Connector_JST", ZH3S, "P2", "ZH1.5 3P side (servo)", 52.05, 4.0, 180, {"1": "SERVO", "2": "5V", "3": "GND", "MP": "GND"})
 
-# ---- the 5 V buck, a column beside the wire pads -------------------------------------------
+# ---- bottom edge, plugs facing out: IR, fan, the switch ---------------------------------------------
+J5 = place("Connector_JST", ZH2S, "J5", "ZH1.5 2P side (IR LED)", 29.8, H - 4.0, 0, {"1": "LEDA", "2": "LEDK", "MP": "GND"})
+J4 = place("Connector_JST", ZH2S, "J4", "ZH1.5 2P side (fan)", 37.6, H - 4.0, 0, {"1": "5V", "2": "GND", "MP": "GND"})
+# the power button, momentary, between the battery and BTN
+J6 = place("Connector_JST", ZH2S, "J6", "ZH1.5 2P side (button)", 45.4, H - 4.0, 0, {"1": "VBAT", "2": "BTN", "MP": "GND"})
+
+# ---- the middle strip: IR driver, VTX UART resistors, the power button, 5 V output caps -------------
+q("Q4", "AO3400", 27.5, 10.0, 0, "IR", "GND", "LEDK")
+r04("R8", "100k", 30.1, 10.0, 90, "IR", "GND")
+r("R6", "33", 31.8, 10.0, 90, "LEDA", "5V")
+r04("R19", "1k", 33.9, 10.0, 90, "MSP_TX", "VTX_RX")
+r04("R20", "1k", 35.0, 10.0, 90, "MSP_RX", "VTX_TX")
+# The power button on J6, momentary: press for on, press again for off.
+#   On:  the button puts the battery on EN through D4; the buck starts, the S3 boots and its TX (IO43, high
+#        while idle, through boot and restarts) holds EN up through D5. Let go, it stays on.
+#   Off: Q6 turns the button into a low on RX (IO44); the S3 sees the second press and drives TX low.
+#        Once the button is let go, R16 pulls EN down. C20 keeps TX's boot-log pulses off EN.
+q("Q6", "AO3400", 37.6, 10.0, 0, "BTN", "GND", "BTN_SENSE")
+r04("R28", "100k", 40.2, 9.0, 90, "BTN", "GND")
+r04("R29", "10k", 40.2, 11.0, 90, "3V3", "BTN_SENSE")
+r04("R16", "100k", 41.4, 9.0, 90, "EN_SW", "GND")
+c("C20", "100nF", 41.4, 11.0, 90, "EN_SW", "GND", C0402)
+place("Diode_SMD", SOD, "D4", "B5819WS", 43.1, 10.0, 90, {"1": "EN_SW", "2": "BTN"})
+place("Diode_SMD", SOD, "D5", "B5819WS", 45.1, 10.0, 90, {"1": "EN_SW", "2": "HOLD"})
+c("C4", "22uF", 47.2, 10.0, 90, "5V", "GND")
+c("C3", "22uF", 49.3, 10.0, 90, "5V", "GND")
+
+# ---- the 5 V buck, bottom middle -------------------------------------------------------------------
 # LMR51430: 1 GND, 2 SW, 3 VIN, 4 FB, 5 EN, 6 CB; 5.0 V = 0.6 V x (1 + 22k / 3k). Turned 180: VIN, SW, GND
-# down the right side, FB, EN, CB down the left. U4, C5 and L1 keep v10's spacing, so its hand routes carry over.
-UX, UY = 62.9, 4.25
-c("C1", "10uF", 63.4, 1.45, 180, "VBAT", "GND")
+# down the right side, FB, EN, CB down the left. U4, C1, C5, L1 keep v10's spacing, so its hand routes carry over.
+UX, UY = 53.6, 11.8
+c("C1", "10uF", UX + 0.5, UY - 2.8, 180, "VBAT", "GND")
 place("Package_TO_SOT_SMD", "SOT-23-6", "U4", "LMR51430XDDCR", UX, UY, 180,
       {"1": "GND", "2": "SW", "3": "VBAT", "4": "FB", "5": "EN_SW", "6": "CB"})
 # the FB ends of the two meet in the middle, level with U4's FB pin; R3's 5 V end faces down, to its via
-r04("R5", "3k", 60.25, 2.6, 90, "FB", "GND")
-r04("R3", "22k", 60.25, 4.6, 90, "5V", "FB")
-r04("R16", "100k", 59.9, 12.9, 90, "EN_SW", "GND")
+r04("R5", "3k", UX - 2.65, UY - 1.65, 90, "FB", "GND")
+r04("R3", "22k", UX - 2.65, UY + 0.35, 90, "5V", "FB")
 c("C5", "100nF", UX - 0.7, UY + 2.35, 0, "CB", "SW", C0402)
-place("Inductor_SMD", "L_Changjiang_FXL0420", "L1", "4.7uH", 63.0, 9.5, 0, {"1": "SW", "2": "5V"})
-c("C3", "22uF", 62.9, 13.05, 180, "5V", "GND")
-c("C4", "22uF", 62.9, 15.15, 180, "5V", "GND")
+place("Inductor_SMD", "L_Changjiang_FXL0420", "L1", "4.7uH", UX + 0.1, UY + 5.25, 0, {"1": "SW", "2": "5V"})
 
-# ---- right end: the battery in, the reverse guard, the ESC's power out ----------------------
-# wires soldered through: the ESC's on the inner column, the battery's on the outer one, between the holes
-place("Connector_Wire", WIRE, "W3", "ESC+", 68.3, 4.6, 0, {"1": "VBAT"})
-place("Connector_Wire", WIRE, "W4", "ESC-", 68.3, 15.0, 0, {"1": "GND"})
-place("Connector_Wire", WIRE, "W1", "BAT+", 73.5, 7.5, 0, {"1": "VBAT"})
-place("Connector_Wire", WIRE, "W2", "BAT-", 73.5, 12.5, 0, {"1": "BAT_N"})
+# ---- the brushed ESC: DRV8874, PWM mode, current limited ------------------------------------------
+# PMODE high: IN1 / IN2 = 10 forward, 01 reverse, 11 brake, 00 coast; both inputs have internal pull-downs,
+# so a restarting S3 coasts. nSLEEP on 3V3: asleep whenever the switch is off. IMODE on GND: fixed off-time
+# chopping, retries after a fault. ITRIP = VREF / (450 uA/A x RIPROPI) = 3.3 / (450e-6 x 1.5k) = 4.9 A.
+# Turned 90: pins 1-8 along the bottom (1 at the left), 9-16 along the top (9 at the right).
+DX, DY = 61.0, 10.0
+place("Package_SO", HTSSOP, "U5", "DRV8874PWPR", DX, DY, 90, {
+    "1": "M_FWD", "2": "M_REV", "3": "3V3", "5": "3V3", "6": "IPROPI", "7": "GND", "8": "MOT_A",
+    "9": "GND", "10": "MOT_B", "11": "VBAT", "12": "VCP", "13": "CPH", "14": "CPL", "15": "GND", "16": "3V3",
+    "17": "GND"})
+c("C15", "22uF 25V", 66.0, 3.0, 270, "VBAT", "GND", C1206)   # bulk, VM
+c("C16", "100nF", 63.5, 4.4, 0, "VBAT", "GND", C0402)       # VM bypass
+c("C18", "100nF", 60.9, 4.6, 270, "VBAT", "VCP", C0402)      # charge pump: VCP to VM
+c("C19", "22nF", 59.6, 4.6, 90, "CPL", "CPH", C0402)        # charge pump flying cap, 50 V
+r04("R26", "1.5k", DX + 0.97, DY + 5.1, 270, "IPROPI", "GND")
+
+# ---- right end: the battery in, the reverse guard, the motor plug ---------------------------------
+# the motor on a ZH2.0 (PH) plug facing off the board's end
+J7 = place("Connector_JST", PH2S, "J7", "ZH2.0 2P side (motor)", W - 4.9, 10.0, 90,
+           {"1": "MOT_A", "2": "MOT_B", "MP": "GND"})
+place("Connector_Wire", WIRE, "W1", "BAT+", 74.0, 2.3, 0, {"1": "VBAT"})
+place("Connector_Wire", WIRE, "W2", "BAT-", 74.0, 17.7, 0, {"1": "BAT_N"})
 # low-side guard, drain to the battery's negative, source to the board's ground. The right way round, the body
 # diode carries the first current, GND sits a diode above BAT- and Vgs = VBAT turns Q1 hard on. Reversed, the
-# body diode is reverse-biased and the gate sits at the source: off. Protects the ESC as well as this board.
-# DMN3008SFG: 1-3 source, 4 gate, 5 (the tab) drain. Turned 90: the tab faces up, the sources face W4 below.
-place("Package_SON", "Diodes_PowerDI3333-8", "Q1", "DMN3008SFG-7", 68.3, 10.2, 90,
+# body diode is reverse-biased and the gate sits at the source: off. DMN3008SFG: 1-3 source, 4 gate, 5 (the tab)
+# drain. Unturned: the sources and gate down the left, the tab to the right, toward W2.
+place("Package_SON", "Diodes_PowerDI3333-8", "Q1", "DMN3008SFG-7", 69.4, 17.3, 0,
       {"1": "GND", "2": "GND", "3": "GND", "4": "Q1G", "5": "BAT_N"})
-r04("R1", "10k", 67.0, 7.45, 0, "VBAT", "Q1G")
+r04("R1", "10k", 65.6, 18.6, 0, "VBAT", "Q1G")
 
 if os.environ.get("DUMP"):
     dump()
@@ -207,12 +267,13 @@ if os.environ.get("OVER"):
             if a < b and A[0] < B[2] and B[0] < A[2] and A[1] < B[3] and B[1] < A[3]:
                 print(a, b, [round(v, 1) for v in A], [round(v, 1) for v in B])
     for m in pcbgen.board.GetFootprints():
-        if m.GetReference() in ("Q1", "U4", "C1", "C5", "L1", "R1"):
+        if m.GetReference() in ("Q1", "J7", "R1", "C15", "C16", "C18", "C19"):
             print(m.GetReference(), {p.GetNumber(): tuple(round(pcbnew.ToMM(v), 2) for v in (p.GetPosition().x, p.GetPosition().y)) for p in m.Pads()})
     sys.exit()
 
 
 CLASSES = [("PWR", 0.5, 0.2, ["VBAT", "VTX", "BAT_N", "SW", "5V"]),
+           ("MOTOR", 0.4, 0.2, ["MOT_A", "MOT_B"]),
            ("GROUND", 0.3, 0.15, ["GND"]),
            ("5V", 0.4, 0.15, ["VIN", "VBUS", "3V3"]),
            ("DRV", 0.4, 0.2, ["LEDA", "LEDK"])]
@@ -245,14 +306,10 @@ def rules():
 
 
 # Hand-drawn where the pins are too tight for the router.
-# USB: the plug's two rows cross over at the pads. D+ bridges A6 / B6 above the pads, D- bridges B7 / A7 below them
-# and drops to a via; the router takes both on to the module.
-_P = H - 2.8 - 4.05  # the plug's row of pads
-_T, _B, _V = _P - 1.06, _P + 1.04, _P + 1.64
 # U4 (SOT-23-6, turned 180): GND drops to a via under the body; SW leaves sideways and comes round below to C5
-# and L1; CB straight down to C5. U2 (LGA-14): the three 3V3 pins (5, 8, 12) joined round the outside, SDA out
-# the top and over, SCL between them and down to a via. Q1's gate is boxed in by the drain and the sources: it
-# leaves on a via and runs under to R1.
+# and L1; CB straight down to C5; FB joins R5 / R3 to the pin. U2 (LGA-14): the three 3V3 pins (5, 8, 12) joined
+# round the outside, SDA out the top and over, SCL between them and down to a via. Q1's gate is boxed in by the
+# drain and the sources: it leaves on a via and runs under to R1.
 GX0, GY0 = GX - 8.5, GY - 30.0  # the gyro routes were drawn with U2 at (8.5, 30)
 
 
@@ -260,28 +317,32 @@ def _g(pts):
     return [(x + GX0, y + GY0) for x, y in pts]
 
 
-HAND_T = [("USB_DP", pcbnew.F_Cu, [(JX - 0.25, _P), (JX - 0.25, _T), (JX + 0.75, _T), (JX + 0.75, _P)], 0.25),
-          ("USB_DM", pcbnew.F_Cu, [(JX - 0.75, _P), (JX - 0.75, _B), (JX + 0.25, _B), (JX + 0.25, _P)], 0.25),
-          ("USB_DM", pcbnew.F_Cu, [(JX - 0.25, _B), (JX - 0.25, _V)], 0.25),
-          ("GND", pcbnew.F_Cu, [(UX + 0.48, UY + 0.95), (UX, UY + 1.05)], 0.25),
-          ("SW", pcbnew.F_Cu, [(UX + 1.8, UY), (UX + 2.3, UY), (UX + 2.3, UY + 3.1), (61.15, UY + 3.1), (61.15, 8.5)], 0.4),
+HAND_T = [("GND", pcbnew.F_Cu, [(UX + 0.48, UY + 0.95), (UX, UY + 1.05)], 0.25),
+          ("SW", pcbnew.F_Cu, [(UX + 1.8, UY), (UX + 2.3, UY), (UX + 2.3, UY + 3.1), (UX - 1.75, UY + 3.1), (UX - 1.75, UY + 4.25)], 0.4),
           ("SW", pcbnew.F_Cu, [(UX - 0.22, UY + 2.35), (UX - 0.22, UY + 3.1)], 0.3),
-          # VBAT for the switch, the VTX and the divider: on the back along the top edge from the battery pour
-          ("VBAT", pcbnew.B_Cu, [(65.9, 1.0), (55.4, 1.0), (54.85, 1.55), (54.85, 2.7)], 0.5),
-          ("VBAT", pcbnew.F_Cu, [(54.85, 2.7), (54.85, 4.6)], 0.5),
-          ("FB", pcbnew.F_Cu, [(60.25, 3.11), (60.25, 4.09)], 0.2),
-          # R3's 5 V: a via below it, under L1 on the back, up beside C3's 5 V pad
-          ("5V", pcbnew.F_Cu, [(60.25, 5.11), (60.25, 6.4)], 0.3),
-          ("5V", pcbnew.B_Cu, [(60.25, 6.4), (60.25, 8.0), (64.25, 12.0), (64.9, 12.0)], 0.3),
-          ("5V", pcbnew.F_Cu, [(64.9, 12.0), (64.35, 12.55)], 0.3),
-          # EN's RC above the module: EN along under the pull-up, the pull-up's 3V3 out to a via by the antenna
-          ("EN", pcbnew.F_Cu, [(7.55, 3.0), (7.55, 2.2), (9.4, 2.2), (9.71, 1.89), (9.71, 1.15)], 0.25),
-          ("3V3", pcbnew.F_Cu, [(8.69, 1.15), (6.6, 1.15)], 0.25),
-          ("FB", pcbnew.F_Cu, [(60.25, 3.3), (UX - 1.14, 3.3)], 0.2),
           ("CB", pcbnew.F_Cu, [(UX - 1.14, UY + 1.25), (UX - 1.18, UY + 2.35)], 0.25),
-          ("Q1G", pcbnew.F_Cu, [(67.51, 7.45), (67.9, 7.45)], 0.25),
-          ("Q1G", pcbnew.B_Cu, [(67.9, 7.45), (66.4, 8.95), (66.4, 12.55), (69.4, 12.55)], 0.25),
-          ("Q1G", pcbnew.F_Cu, [(69.4, 12.55), (69.28, 11.7)], 0.25),
+          # IO5 to the IR driver: on the back under the bottom pin row, up past the antenna keepout
+          ("IR", pcbnew.B_Cu, [(MCOL[6], MBOT), (18.0, 18.8), (25.9, 18.8), (25.9, 8.5)], 0.25),
+          ("IR", pcbnew.F_Cu, [(25.9, 8.5), (26.56, 9.05)], 0.25),
+          ("FB", pcbnew.F_Cu, [(UX - 2.65, UY - 1.14), (UX - 2.65, UY - 0.16)], 0.2),
+          ("FB", pcbnew.F_Cu, [(UX - 2.65, UY - 0.95), (UX - 1.14, UY - 0.95)], 0.2),
+          # R3's 5 V: a via below it, under U4 on the back, up beside L1's 5 V pad
+          ("5V", pcbnew.F_Cu, [(UX - 2.65, UY + 0.86), (UX - 2.65, UY + 2.15)], 0.3),
+          ("5V", pcbnew.B_Cu, [(UX - 2.65, UY + 2.15), (UX - 2.65, UY + 2.6), (UX + 2.8, UY + 2.6), (UX + 2.8, UY + 5.25)], 0.3),
+          ("5V", pcbnew.F_Cu, [(UX + 2.8, UY + 5.25), (UX + 1.95, UY + 5.25)], 0.3),
+          # DRV8874 (turned 90): OUT1 off the bottom row's right end, OUT2 up out of the top row and over, each
+          # widening to the motor plug; VM straight up into the battery pour; PGND, GND and IMODE into the pad
+          ("MOT_A", pcbnew.F_Cu, [(DX + 2.27, DY + 2.86), (DX + 3.4, DY + 2.86)], 0.4),
+          ("MOT_A", pcbnew.F_Cu, [(DX + 3.4, DY + 2.86), (DX + 4.9, DY + 1.0), (67.0, DY + 1.0)], 0.8),
+          ("MOT_B", pcbnew.F_Cu, [(DX + 1.62, DY - 2.86), (DX + 1.62, DY - 4.3)], 0.4),
+          ("MOT_B", pcbnew.F_Cu, [(DX + 1.62, DY - 4.3), (DX + 3.4, DY - 4.3)], 0.4),
+          ("MOT_B", pcbnew.F_Cu, [(DX + 3.4, DY - 4.3), (DX + 5.5, DY - 2.2), (DX + 5.5, DY - 1.0), (67.0, DY - 1.0)], 0.8),
+          ("VBAT", pcbnew.F_Cu, [(DX + 0.97, DY - 2.86), (DX + 0.97, 3.2)], 0.4),
+          ("GND", pcbnew.F_Cu, [(DX + 2.27, DY - 2.86), (DX + 2.27, DY - 1.4)], 0.3),
+          ("GND", pcbnew.F_Cu, [(DX - 1.62, DY - 2.86), (DX - 1.62, DY - 1.4)], 0.3),
+          ("GND", pcbnew.F_Cu, [(DX + 1.62, DY + 2.86), (DX + 1.62, DY + 1.4)], 0.3),
+          ("3V3", pcbnew.F_Cu, [(DX - 0.97, DY + 2.86), (DX - 0.97, DY + 4.3), (DX + 0.33, DY + 4.3), (DX + 0.33, DY + 2.86)], 0.25),
+          ("IPROPI", pcbnew.F_Cu, [(DX + 0.97, DY + 2.86), (DX + 0.97, DY + 4.59)], 0.25),
           ("3V3", pcbnew.F_Cu, _g([(8.0, 31.22), (8.0, 31.6), (10.3, 31.6), (10.3, 28.4), (9.0, 28.4), (9.0, 28.78)]), 0.2),
           ("3V3", pcbnew.F_Cu, _g([(9.97, 30.75), (10.3, 30.75)]), 0.2),
           ("3V3", pcbnew.F_Cu, _g([(10.3, 29.51), (11.6, 29.51)]), 0.25),
@@ -289,7 +350,9 @@ HAND_T = [("USB_DP", pcbnew.F_Cu, [(JX - 0.25, _P), (JX - 0.25, _T), (JX + 0.75,
           ("SCL", pcbnew.F_Cu, _g([(8.5, 29.09), (8.5, 27.9)]), 0.2),
           ("SCL", pcbnew.B_Cu, _g([(8.5, 27.9), (8.5, 29.1), (13.5, 29.1)]), 0.25),
           ("SCL", pcbnew.F_Cu, _g([(13.5, 29.1), (12.7, 28.49)]), 0.25)]
-HAND_V = [("USB_DM", JX - 0.25, _V), ("VBAT", 54.85, 2.7), ("5V", 60.25, 6.4), ("5V", 64.9, 12.0), ("3V3", 6.6, 1.15), ("GND", UX, UY + 1.05), ("Q1G", 67.9, 7.45), ("Q1G", 69.4, 12.55),
+# six 0.3 mm vias under the DRV8874's thermal pad, into the ground pour on the back
+HAND_V = [("IR", 25.9, 8.5), *[("GND", DX + dx, DY + dy) for dx in (-1.6, 0.0, 1.6) for dy in (-0.75, 0.75)],
+          ("5V", UX - 2.65, UY + 2.15), ("5V", UX + 2.8, UY + 5.25), ("GND", UX, UY + 1.05),
           *[(n, x + GX0, y + GY0) for n, x, y in (("3V3", 10.3, 28.4), ("SCL", 8.5, 27.9), ("SCL", 13.5, 29.1))]]
 
 
@@ -385,7 +448,7 @@ def tent():
 
 # JLC's part models sit turned from KiCad's footprints; checked against JLC's SMT preview.
 CPL_TURN = {"Q2": 180, "Q3": 180, "Q4": 180, "U3": 270, "D2": 180, "D3": 180, "J3": 180, "J2": 180, "J6": 180}
-CPL_MOVE_Y = {"J9": 1.5}  # mm toward the top of the board: JLC's model has its origin elsewhere than KiCad's footprint
+CPL_MOVE_Y = {}  # mm toward the top of the board: JLC's model has its origin elsewhere than KiCad's footprint
 
 
 def cpl_rotation():
@@ -419,22 +482,21 @@ def prune():
 
 
 def labels():
-    """What plugs in where, on the back (no parts there to collide with); the wire pads on both sides."""
+    """What plugs in where, on the back (no parts there to collide with); the battery pads on both sides."""
     B = pcbnew.B_SilkS
-    for s_, x, y in [("B", 13.0, 7.0), ("G", 13.0, 13.0), ("EP2", 28.2, 6.2), ("ESC", 38.3, 4.4), ("SERVO", 47.1, 4.4),
-                     ("SW", 55.6, 6.2), ("USB", JX, 11.2), ("IR", 37.1, 13.4), ("FAN", 45.4, 13.4), ("VTX", 54.6, 13.8),
-                     ("IMU", GX, 11.2)]:
+    for s_, x, y in [("EP2", 31.2, 8.4), ("VTX", 42.0, 8.4), ("SERVO", 52.05, 8.4), ("IR", 29.8, 11.6),
+                     ("FAN", 37.6, 11.6), ("BTN", 45.4, 11.6), ("MOTOR", 69.0, 4.6), ("S3 SuperMini", 11.0, 10.0),
+                     ("X2201 main board v10", 37.0, 10.0)]:
         text(s_, x, y, 0.8, B)
     for layer in (pcbnew.F_SilkS, B):
-        for s_, x, y in [("ESC+", 68.3, 1.55), ("ESC-", 68.3, 17.5), ("BAT+", 73.5, 5.2), ("BAT-", 73.5, 14.8)]:
+        for s_, x, y in [("BAT+", 74.0, 4.4), ("BAT-", 74.0, 15.6)]:
             text(s_, x, y, 0.8, layer)
-    text("X2201 main board v10", 48.0, 11.6, 0.8, B)
 
 
 if __name__ == "__main__":
     outline(0, 0, W, H, CORNER)
-    # no copper by the module's antenna
-    keepout(0, 0, ANT, H)
+    # no copper under the module's antenna
+    keepout(*ANT)
     if os.environ.get("PLACE"):
         pcbgen.project(OUT, CLASSES)
         save(OUT)
@@ -445,18 +507,17 @@ if __name__ == "__main__":
     rules()
     pcbgen.project(OUT, CLASSES, default=(0.25, 0.15))
     import router
-    # Pours for the battery's current, filled after routing: battery to the ESC pads and the buck's input,
-    # and the reverse guard's drain back to BAT-. GND (Q1's sources to W4) is the ground pour.
+    # Pours for the battery's current, filled after routing: a band along the top from BAT+ to the
+    # DRV8874's VM and down to the buck's input; the reverse guard's tab to BAT-. The return from the
+    # DRV8874 to Q1's sources is the ground pour, kept clear of tracks on the top.
     POWER = [
-        ("VBAT", (63.6, 0.5, 65.9, 3.62), True),    # C1 and U4 VIN, stops short of SW; SMD pads only: top
-        ("VBAT", (65.75, 0.5, 75.55, 6.9), False),  # over to W3
-        ("VBAT", (65.75, 6.5, 66.95, 7.95), False),  # down to R1
-        ("VBAT", (71.4, 6.8, 75.55, 9.4), False),   # round W1
-        ("BAT_N", (69.0, 8.6, 71.1, 11.0), True),  # Q1's tab, top only
-        ("BAT_N", (70.4, 9.7, 75.55, 15.6), False),  # over to W2
+        ("VBAT", (56.6, 0.5, 75.55, 3.4), False),            # BAT+ along the top edge
+        ("VBAT", (56.6, 0.5, 58.0, UY - 0.63), False),        # down to the buck
+        ("VBAT", (UX + 0.7, UY - 3.75, 58.0, UY - 0.63), True),  # C1 and U4 VIN, stops short of SW: top
+        ("BAT_N", (69.6, 15.6, 75.55, 19.5), False),         # Q1's tab over to BAT-
     ]
-    KEEP = [(0, 0, ANT, H), *[b for _, b, _ in POWER], (65.6, 12.15, 71.0, 17.9)]  # + Q1's sources down to W4
-    keepout_top(66.7, 12.1, 69.05, 13.6)  # the router leaves Q1's sources a clear run to W4
+    KEEP = [ANT, *[b for _, b, _ in POWER], (63.9, 13.4, 67.5, 17.0)]
+    keepout_top(64.2, 13.4, 67.2, 17.0)  # the DRV8874's return to Q1's sources
     UNDER = []
     edge_keepout()
     draw_hand()
@@ -476,7 +537,7 @@ if __name__ == "__main__":
             if l == pcbnew.B_Cu and top_only:
                 continue
             zone(n, l, *box).SetAssignedPriority(i + 1)
-        zone("GND", l, ANT, 0.3, W - 0.3, H - 0.3, chamfer=1.0)
+        zone("GND", l, 0.3, 0.3, W - 0.3, H - 0.3, chamfer=1.0)
     pcbnew.ZONE_FILLER(pcbgen.board).Fill(pcbgen.board.Zones())
     save(OUT)
     prune()
