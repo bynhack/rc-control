@@ -41,6 +41,19 @@ LINER_T = 1.0  # MEASURE: the liner's wall
 CELL = 1.0
 REPLICA_T = 1.2  # the replica's wall, square to its surface
 
+# Key points, read off the full scan (Mesh 1111) and moved into the cage's
+# coordinates (the scan fitted onto x2201_liner.npz: 0.16 mm median). z is the
+# liner's top there. CHECK with calipers: the hole spacings and diameters.
+FRONT_HOLES = (88.4, 20.1)  # the front ears' screw holes, +-y; the ears' top at z 4.8
+BACK_TUBES = (-20.9, 22.1)  # the back screw tubes, +-y; their top at z 6.8, down to the chassis
+HOLE_D = 4.6  # all four (the scan's are 4.5 to 5.5 across, ragged)
+TUBE_OD = 7.0
+BAR_HOLE = (35.1, 0.0)  # the screw hole in the bar between the roof's slots, on the roof at z 23.7
+BAR_HOLE_D = 2.2
+SLOTS_X = (16.4, 52.8)  # the roof's two slots (the windows), corners rounded ~2.5
+SLOTS_Y = (3.9, 18.9)  # |y|
+ROOF_TOP = (30.9, 23.9)  # x, z: the liner's highest point, on the centre line
+
 
 def resting(mesh):
     """A mesh of the liner alone: stood on the plane it rests on (the
@@ -101,6 +114,32 @@ def on_turntable(p):
     return pts[np.linalg.norm(pts[:, :2] - m, axis=1) < 75]  # the liner, not the turntable's markers
 
 
+def mirror_centre(X, Y, z):
+    """Turn and shift the points in plan so y = 0 is the liner's mirror line:
+    the liner mirrored across it lands on itself. The long axis and the
+    percentiles above only get it to a degree and a millimetre or so."""
+    from scipy.optimize import least_squares
+    from scipy.spatial import cKDTree
+
+    rng = np.random.default_rng(0)
+    i = rng.choice(len(X), min(len(X), 30000), replace=False)
+    xc = X.mean()
+
+    def place(p, x, y):
+        t, y0 = p
+        c, s = np.cos(t), np.sin(t)
+        return xc + c * (x - xc) - s * y, s * (x - xc) + c * y - y0
+
+    def res(p):
+        x, y = place(p, X[i], Y[i])
+        d, _ = cKDTree(np.c_[x, y, z[i]]).query(np.c_[x, -y, z[i]])
+        return np.minimum(d, 2.0)
+
+    p = least_squares(res, [0.0, 0.0], diff_step=1e-3).x
+    print(f"liner: mirror line {np.degrees(p[0]):.2f} deg, {p[1]:.2f} mm off the first guess")
+    return place(p, X, Y)
+
+
 def build(ply):
     import trimesh
     from scipy import ndimage
@@ -132,6 +171,7 @@ def build(ply):
     cage_x = L - WS_RUN * (z_mid - Z_COWL) / (Z_WS_TOP - Z_COWL)
     X = cage_x + (cross - xy[:, 0])  # the scan's front is -x, the cage's +x
     Y = xy[:, 1]
+    X, Y = mirror_centre(X, Y, z)
     # Height map: the top surface, per cell.
     gx = np.arange(np.floor(X.min()), np.ceil(X.max()) + CELL, CELL)
     gy = np.arange(-45.0, 45.0 + CELL, CELL)
