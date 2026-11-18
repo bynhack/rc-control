@@ -1,6 +1,22 @@
 # 專案筆記
 
-開發過程中累積的硬體事實、實測結果和決策原因。目前進度和待辦見 [HANDOFF.md](../HANDOFF.md)，操作說明見 `docs/` 下各語言文件。
+開發過程中累積的硬體事實、實測結果、決策原因，以及目前進度。操作說明見 `docs/` 下各語言文件，X2201 的硬體方案見 [hardware/PLAN.md](../hardware/PLAN.md)。
+
+## 目前進度和待辦（2026-11-18）
+
+- **方向盤控制器**（`firmware/wheel-controller`）：可以用，三種發射方式都通過。
+- **X2201 主板**：2026-11-17 在 JLC 下單（commit `a1125d9`），標準型 PCBA，D6 由 JLC 插件焊接。JLC 加的四邊工藝邊，左右兩條是 V 割接在有側插插座的板邊上，拆的時候往背面掰，拆完檢查插座。
+- **拱門**（`firmware/lap-arch`）：程式可以編譯、主機測試通過，零件已買（TSOP38238 × 8、ESP32-C3 SuperMini、100Ω、4 × 7 mm 10µF），還沒做出來。
+
+待辦：
+
+1. 板子到貨：拆工藝邊；先不焊 SuperMini，只接電池（先確認正負極），量 5V 和各插座電壓；再焊 SuperMini（排針墊高約 2.5 mm）和 EP2（J8 或 J2）。步驟在 [主板 README](../hardware/x2201-mainboard/README.md)。
+2. 寫主板韌體，要點見 PLAN.md 的「韌體要做的事」。
+3. 改線材：圖傳改壓 ZH1.5 4P，舵機換 ZH1.5 3P，電池用 XH2.54 3P 對插線（只接兩邊的線），馬達用 PH2.0 2P。
+4. 做拱門，建議 6 顆接收頭各接一支 GPIO，並排過線才不會漏記。
+5. 待決定：用 S3 模擬 MSP DisplayPort 給 Ascent 畫 OSD；圈速從拱門 → P4 → ELRS AUX 通道 → S3 的連線。
+
+工具：KiCad 10（`/Applications/KiCad/`）、Java 17 + `hardware/tools/freerouting-1.9.0.jar`、ESP-IDF v5.5（`~/esp/esp-idf`）、3D 件用 `cad/.venv`（`pip install manifold3d numpy trimesh matplotlib scipy`）、應答器用 ch32fun + WCH-LinkE。主板重新產生的指令見主板 README。
 
 ## 專案概況
 
@@ -11,7 +27,9 @@
 
 最早的版本跑在 ESP32-S3-N16R8 開發板上（MOZA R5 + 單線 CRSF + GC9A01 圓形螢幕），端到端驗證過，之後依使用者決定只保留 P4（commit a9272ba）。
 
-P4 是預設目標，在 `firmware/wheel-esp32` 直接 `idf.py build`。程式碼授權 GPL-3.0（來自 Aviateur submodule）。
+P4 是預設目標，在 `firmware/wheel-controller` 直接 `idf.py build`。程式碼授權 GPL-3.0。
+
+2026-11-18 刪除了 Rust 電腦版（ELRS 高頻頭控制、OpenIPC 圖傳接收）、`elrs-bench` 和不再使用的 3D 件，需要時從 git 找回（commit `a1125d9`）。
 
 ## 地面端（Waveshare ESP32-P4-WIFI6-Touch-LCD-7B）
 
@@ -90,11 +108,11 @@ P4 是預設目標，在 `firmware/wheel-esp32` 直接 `idf.py build`。程式�
 ### X2201 的電裝
 
 - 電調 ZERO-Z 2S：內建陀螺儀、5V 1A BEC、燈光輸出、開關。接收機口 ZH1.5 4P：黃 S2、藍 S1、綠 GND、棕 5V（已對實物確認）。
-- 舵機原來插在 ZERO-Z 上，由電調的陀螺儀控制。那顆 BEC 只有 1A，要設好端點避免舵機堵轉。階段 1 改由 S3 驅動舵機，5V 改吃板載 3A BEC，端點限制照舊。
+- 舵機原來插在 ZERO-Z 上，由電調的陀螺儀控制。那顆 BEC 只有 1A，要設好端點避免舵機堵轉。階段 1 改由 S3 驅動舵機，5V 改吃主板的 BEC，端點限制照舊。
 - 2026-11-13：階段 0 全部通過。ZERO-Z 不再使用。
-- 2026-11-16：階段 1 外接 RZ7886 有刷電調模組的無 BEC 版（持續 7.5A，峰值 15A）。電池先進主板，主板經防反接後供電給電調，並用板載 5V 3A 開關 BEC 供 S3、EP2、舵機。圖傳仍接電池。主板 v10 為 76×20，見 `hardware/ROADMAP.md`。
+- 2026-11-16：電調和 5V BEC 都做進主板（DRV8874、LMR51430，BEC 實際約 2–2.5A，受電感限制），電池只接主板。原本考慮的外接 RZ7886 電調已取消。見 [hardware/PLAN.md](../hardware/PLAN.md)。
 - 電調要先看到轉向訊號才會解鎖油門。
-- 接收機 CYCLONE EP2 2400RX：10×10×6 mm，陶瓷天線，ESP8285，網頁顯示「BETAFPV 2.4GHz Lite RX」，焊盤間距 2.4 mm。
+- 接收機 CYCLONE EP2 2400RX：10×10×6 mm，陶瓷天線，ESP8285，網頁顯示「BETAFPV 2.4GHz Lite RX」，焊盤間距 2.54 mm（使用者確認）。元件面朝上、焊盤朝自己時，由左到右是 RX、TX、5V、GND。
 - 圖傳 Walksnail Ascent Lite+：3.0–12.6V。插頭是 **JST1.0（SH）6P**，只有前 4 腳有線：1 紅電源、2 黑 GND、3 白 RX、4 灰 TX。舊文件寫的 4P 是錯的。
 - 車殼是合金的，有開窗，天線和 WiFi 距離都要實測。
 
@@ -117,29 +135,28 @@ P4 是預設目標，在 `firmware/wheel-esp32` 直接 `idf.py build`。程式�
 | v7 | S3-Zero + EP2 手焊 | 被 v8 取代，圖傳插座是錯的 4P |
 | v8 | S3-MINI-1 貼片，EP2 手焊，EP2 直接接電調 | 階段 0 驗證後不再需要 |
 | v9 | 外接電調，板載 5V 3A 降壓 | 被取代；Q1 防反接的 drain、source 接反 |
-| **主板**（原 v10） | SuperMini、板載 DRV8874 電調、板載 BEC、側插 ZH 插座、按鈕開關機 | 2026-11-16 確認，`hardware/x2201-mainboard` |
+| **主板**（原 v10） | SuperMini、板載 DRV8874 電調、板載 BEC、側插 ZH 插座、按鈕開關機、板上 IR LED、EP2 直焊孔 | 2026-11-17 在 JLC 下單，`hardware/x2201-mainboard`（commit `a1125d9`） |
 
 2026-11-16 起，硬體方案寫在 [hardware/PLAN.md](../hardware/PLAN.md)，只保留一塊主板，v3～v9 已從目錄刪除（git commit `56bd000` 之前還找得到）。後續路徑見 [hardware/ROADMAP.md](../hardware/ROADMAP.md)。
 
 以下是 v8 時的決定，已被取代，留作紀錄：v8 第一版盡量精簡，拿掉了車燈、溫度偵測、風扇調速、陀螺儀；EP2 以 PWM 直接接電調（方案 A），因為這條鏈路已經跑通，S3 當機也不影響開車。階段 0 驗證 S3 隔在中間不會讓 EP2 卡死之後，改回 EP2 → CRSF → S3。
 
-## FPV 支架與外殼（`firmware/wheel-esp32/enclosure`）
+## FPV 支架與外殼（`cad`）
 
 - 駕駛視角：Walksnail 攝影機 + 圖傳 + 25 mm 風扇。
 - 座艙實測：底部 84 長 × 68 寬，腰線 12，車頂最高 24（mm）。
 - `x2201_liner.py` 把內襯掃描點雲轉成高度圖。第一次掃描有破洞，車頂邊緣下方缺資料，要噴顯像劑重掃。
 - 待定：內襯開整片擋風玻璃還是鏡頭孔，天線從合金殼哪裡出來。
-- repo 裡沒有 CAD 虛擬環境，要自己建，見 HANDOFF.md。
+- repo 裡沒有 CAD 虛擬環境，在 `cad/` 建 `.venv`，見硬體文件。
 
 ## 計圈
 
-四台車同場。先做車端，終點拱門之後做。
+四台車同場。車端：X2201 的 IR LED 在主板上（D6，IO5 經 AO3400），其他車用應答器小板。終點拱門：`firmware/lap-arch`，6 個 TSOP38238 接 ESP32-C3，見 [docs/zh-TW/lap-arch.md](zh-TW/lap-arch.md)，還沒實機測試。
 
 - 發射器 CH32V003J4M6 + AO3400 + 940 nm LED，38 kHz（`firmware/transponder`，`hardware/transponder`），還沒上機驗證。
 - 幀格式：4T 訊號、2T 間隔的起始，8 位元 LSB 先傳（1T 訊號，1T 或 2T 間隔），ID 加反碼，1T 停止位，T = 400 µs。幀間隨機 4–12 ms。
 - 車號在燒錄時指定：`make flash CAR=n`，跳線為備用。
 - 編譯用 ESP-IDF 的 riscv32 GCC，`make build PREFIX=riscv32-esp-elf`；需要 ch32fun、minichlink、WCH-LinkE。
-- v8 改由 S3 的 GPIO15 驅動 IR。
 
 ## 電路板流程
 
@@ -151,7 +168,11 @@ P4 是預設目標，在 `firmware/wheel-esp32` 直接 `idf.py build`。程式�
 - 懸空走線要用 uuid 刪除；用座標比對會誤刪相鄰走線。
 - **DRC 通過不等於電路正確**：要核對網路（曾把 IR 打成兩個網路）、線寬，以及 SMD 焊盤上有沒有過孔。
 - 嘉立創規則：線寬、間距 0.15 mm，過孔最小 0.45 mm。
-- 嘉立創的零件模型方向常和 KiCad 不同，修正寫在各板的 `CPL_TURN`，每次都要看貼片預覽。
+- 嘉立創的零件模型方向常和 KiCad 不同，每次都要看貼片預覽：每顆有方向的零件，粉紅色第 1 腳圓點要落在絲印三角形那一角。修正在 `gen_pcb.py`：`CPL_TURN` 依封裝、`CPL_TURN_VALUE` 依料號（同封裝不同料，模型可能差 180°，例如 1N4148WS 和 B5819WS）、`CPL_SHIFT` 修位置偏移、`CPL_CENTRE` 給直插 LED 用焊盤中點。**不要用位號當鍵**：位號換板就換了零件，舊表會轉錯零件。
+- 只改零件數值時，用 `REUSE_SES=1 FAB=1` 重新產生，再逐層比對 Gerber 的幾何內容（KiCad 每次輸出的元素順序和光圈編號不同，直接 diff 沒有意義）。
+- JLC 經濟型貼片不支援部分零件（例如 ST 的 LSM6DS 系列陀螺儀都只能用標準型，加約 200 元）；JLC 的貼片庫存和立創商城的庫存是分開的。
+- 同型號不同品牌要看規格書：立創上「ICM-42688-P（Tokmas）」和 TDK 原廠的腳位、暫存器、雜訊都不同。
+- 側插插座的塑膠本體會超出板邊約 0.1 mm：工藝邊要接在沒有插座的兩邊，拆邊條時往背面掰。
 
 ## 協作偏好
 

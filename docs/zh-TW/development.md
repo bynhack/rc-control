@@ -4,7 +4,7 @@
 
 ## 韌體結構
 
-都在 [`firmware/wheel-esp32/main`](../../firmware/wheel-esp32/main)：
+都在 [`firmware/wheel-controller/main`](../../firmware/wheel-controller/main)：
 
 | 檔案 | 作用 |
 |---|---|
@@ -69,10 +69,10 @@ T300RS 照 Linux 的 hid-thrustmaster 和 hid-tmff2 做。剛插上時它是 `04
 
 ## 調試頁面
 
-[`tools/remote_tune.html`](../../firmware/wheel-esp32/tools/remote_tune.html) 是透過串口指令操作的調試頁面。要用支援 Web Serial 的 Chrome，從本機伺服器打開：
+[`tools/remote_tune.html`](../../firmware/wheel-controller/tools/remote_tune.html) 是透過串口指令操作的調試頁面。要用支援 Web Serial 的 Chrome，從本機伺服器打開：
 
 ```bash
-python3 -m http.server 8765 --bind 127.0.0.1 --directory firmware/wheel-esp32/tools
+python3 -m http.server 8765 --bind 127.0.0.1 --directory firmware/wheel-controller/tools
 ```
 
 打開 http://localhost:8765/remote_tune.html，按「連接 P4」。
@@ -86,51 +86,6 @@ python3 -m http.server 8765 --bind 127.0.0.1 --directory firmware/wheel-esp32/to
 
 - **字型**：`main/fonts/gen_fonts.sh <字型目錄>` 用 `lv_font_conv`（需要 Node）重新產生點陣字型。中文字型只收原始碼裡出現的字，所以加了介面文字後要重跑。字型目錄要放 Noto Sans SC Medium，以及儀表數字用的 Saira 和 Barlow Condensed，下載連結在腳本開頭。
 - **儀表盤圖片**：靜態圖層畫在 `design/render/dash_render.html`。`design/render/build_assets.py` 用 headless Chrome 渲染，輸出到 `main/assets/*.bin`。需要 Google Chrome、Pillow 和 numpy。
-
-## 電腦版結構
-
-```
-src/
-  control.rs        跟發射方式無關的控制狀態和全部安全規則
-  config.rs         設定檔
-  protocol/crsf.rs  CRSF 組幀、解析（鏈路品質、設備名、模組重置）
-  backend/elrs.rs   定時發送執行緒
-  gui/mod.rs        視窗佈局和互動
-  gui/widgets.rs    自繪元件：儀表、轉向條、滑條、訊號條、鏈路歷史
-  gui/theme.rs      配色、深色主題、字型
-  gui/dev.rs        開發用：自動截圖、示範輸入
-  video/rtp.rs      RTP 重組成 H.264/H.265 幀（掉包時丟棄殘缺分片）
-  video/decoder.rs  FFmpeg 低延遲解碼，轉成 RGBA
-  video/mod.rs      收流執行緒、統計
-  radio/mod.rs      內建圖傳：網卡選擇、啟動、斷線重連、狀態
-  wheel.rs          MOZA R5／T300RS HID 讀取、報告解析、--probe-wheel
-native/             C++ 層：編譯 Aviateur 的收包程式碼，提供 C 介面（rcwfb.h）
-third_party/aviateur  子模組，GPL-3.0
-vendor/             ffmpeg-sys-next 9.0.1 加 Windows D3D 空 stub（[patch.crates-io]）
-scripts/            Windows：編譯、部署 DLL、把 8812AU 綁定到 WinUSB
-```
-
-`cargo test` 會跑協議、映射、安全規則和方向盤報告解析的單元測試，不需要接硬體。
-
-### 調介面用的環境變數
-
-- `RC_CONTROL_SNAPSHOT=out.bmp`：啟動約 1.5 秒後，把視窗畫面存成圖片。程式自己畫，不需要系統的螢幕錄製權限。
-- `RC_CONTROL_DEMO=方向,油門[,low|mid|high]`：用假輸入看儀表效果，數值範圍 −1 到 1。**只要有設備連著就自動失效**，要搭配不存在的串口使用：
-
-```bash
-printf '[elrs]\nport = "/dev/none"\n' > /tmp/demo.toml
-RC_CONTROL_DEMO="0.45,0.85,high" RC_CONTROL_SNAPSHOT=/tmp/ui.bmp ./target/release/rc-control --config /tmp/demo.toml
-```
-
-### 電腦版編譯備註
-
-- `vendor/ffmpeg-sys-next-9.0.1`：bindgen 解析 `<d3d11.h>` 時，會把 `amxintrin.h` 的 `__tile1024i_str` 帶進來，它的 `packed` + `align` 組合 rustc 編譯不過（E0587／E0080）。所以在 `hwcontext_stubs` 補了 d3d11／d3d12／d3d9／dxva2 空 stub，經 `[patch.crates-io]` 使用。
-- Aviateur 的幾處 MinGW 修正，編譯時打在複製出來的檔案上，子模組保持不動（見 `native/CMakeLists.txt` 的 `patch_staged`）：
-  - MinGW 已經有 `clock_gettime`（winpthreads），所以 `net_compat.h` 裡的內聯版本只在其他平台用。
-  - `compat/getopt.h` 裡 getopt 全域變數的 weak 定義，在 PE 連結器下會重複，MinGW 下不提供。
-  - `net_compat.h` 在 Windows 上把 `__attribute__` 清空，wfb-ng 標頭的 `packed` 就沒了，而替代的寫法只對 MSVC 恢復 1 位元組對齊。MinGW 因此在 `wblock_hdr_t` 裡補了空位（16 位元組而不是 9），每一幀都解密失敗。現在 `wifibroadcast.hpp` 在所有 Windows 編譯器上都加 `#pragma pack`。
-- 一處對上游的修正，用同樣的方式套用：Aviateur 停止鏈路後不會關閉 UDP 8001，同一個行程裡再次啟動會直接崩潰。複製出來的 `tx_frame.cpp` 會補上關閉。
-- `native/CMakeLists.txt` 的 `/utf-8` 只對 MSVC 生效；`build.rs` 為 MinGW 連結靜態 libstdc++／gcc_eh 和 ws2_32。
 
 ## 協議要點
 

@@ -4,7 +4,7 @@
 
 这一篇讲独立控制器的硬件、接线，以及固件的编译和烧录。方向盘和踏板用 USB 接到 ESP32-P4，板子跑驾驶模型和那台车的操控设置，再用你给那台车选的发射方式发出去。7 寸触控屏显示仪表盘和设置，喇叭放引擎声浪，方向盘底座有力回馈。全程不用电脑。
 
-固件在 [`firmware/wheel-esp32`](../../firmware/wheel-esp32)。
+固件在 [`firmware/wheel-controller`](../../firmware/wheel-controller)。
 
 ## 硬件
 
@@ -38,7 +38,7 @@ UART 端子（H8）跟烧录口共用 UART0，不能拿来接发射模块。
 需要 [ESP-IDF v5.5](https://docs.espressif.com/projects/esp-idf/zh_CN/v5.5/esp32p4/get-started/)，默认目标就是 ESP32-P4：
 
 ```bash
-cd firmware/wheel-esp32
+cd firmware/wheel-controller
 . ~/esp/esp-idf/export.sh
 idf.py build
 idf.py -p /dev/cu.usbmodemXXXX flash

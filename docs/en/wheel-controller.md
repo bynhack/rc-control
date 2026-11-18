@@ -4,7 +4,7 @@
 
 This page covers the standalone controller: hardware, wiring, and building and flashing the firmware. The wheel and pedals plug into an ESP32-P4 over USB. The board runs the driving model and the car's handling, then transmits over the radio you picked for that car. The 7" touch screen shows the dashboard and the settings, the speaker plays the engine sound, and the wheel base gets force feedback. You don't need a PC.
 
-The firmware is in [`firmware/wheel-esp32`](../../firmware/wheel-esp32).
+The firmware is in [`firmware/wheel-controller`](../../firmware/wheel-controller).
 
 ## Hardware
 
@@ -38,7 +38,7 @@ The UART terminal (H8) shares UART0 with the flashing port, so don't use it for 
 You need [ESP-IDF v5.5](https://docs.espressif.com/projects/esp-idf/en/v5.5/esp32p4/get-started/). The default target is the ESP32-P4.
 
 ```bash
-cd firmware/wheel-esp32
+cd firmware/wheel-controller
 . ~/esp/esp-idf/export.sh
 idf.py build
 idf.py -p /dev/cu.usbmodemXXXX flash

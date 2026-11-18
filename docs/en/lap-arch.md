@@ -30,7 +30,7 @@ The LED is about 115 mm from the receivers. That's roughly 3–8 W/m² of irradi
 
 - A 20 mm deep rectangular tube with the receiver at its top, the opening 40 mm along the track (about ±45°) and 18 mm across (about ±25°). Printed in black PLA, clipped onto the 2020 and held with an M4 T-nut, so it slides sideways. The TSOP38238's own half-sensitivity angle is ±45°.
 - The view along the track is then about 230 mm. At 5 m/s a car is in view for about 45 ms, at least one whole frame (the worst case needs 37 ms).
-- No model for it yet (no script in `enclosure`): make it to the sizes above, or start with black heat-shrink over the receiver.
+- No model for it yet (no script in `cad`): make it to the sizes above, or start with black heat-shrink over the receiver.
 
 ## Receiver vs. datasheet
 
@@ -189,7 +189,7 @@ Type a line on the serial port:
 
 ## Later: lap times to the cars
 
-The plan is arch → P4 → ELRS AUX channel → the car's S3 (see HANDOFF.md); not in this version:
+The plan is arch → P4 → ELRS AUX channel → the car's S3 (see docs/project-notes.md); not in this version:
 
 - Arch to P4: the arch's JSON already has what the P4 needs (car, lap, lap time). The P4's USB-A port has the wheel on it, so it's a UART, or ESP-NOW (the C3 has Wi-Fi).
 - P4 to car: each car has its own ELRS link; the P4 puts that car's latest lap and lap time on an AUX channel. AUX channels have few bits, so the lap time goes in pieces, or only "lap count + new lap" and the car works out the rest.

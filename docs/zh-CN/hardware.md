@@ -4,27 +4,27 @@
 
 ## 3D 打印件
 
-所有模型都是 [`firmware/wheel-esp32/enclosure`](../../firmware/wheel-esp32/enclosure) 里的参数化 Python 脚本（manifold3d），STL 在 `enclosure/out/`。`*_viewer.html` 和 `*_assembly.html` 是装配预览，用浏览器打开。
+所有模型都是 [`cad`](../../cad) 里的参数化 Python 脚本（manifold3d），STL 在 `cad/out/`。`*_viewer.html` 和 `*_assembly.html` 是装配预览，用浏览器打开。
 
 | 模型 | 内容 |
 |---|---|
 | `p4_case.py` | P4 板的桌面外壳：屏幕托盘 `p4_tray.stl`；装在 MOZA 底座上的支架 `p4_stand.stl`，内有 100 × 45 双单元盒式喇叭的槽位和 ELRS Nano 的位置；以及把四合一挂在支架背板上的盖板 `p4_multi_cover.stl` |
-| `minicar_cage.py` | 1:28 拉力车的测试框：车壳下可用空间的形状 |
-| `minicar_mount.py` | 那台车车壳内的图传和接收机支架 |
 | `vtx_mount.py` | Walksnail Avatar Ascent Lite+ 图传和摄像头的低矮风冷支架 |
 | `x2201_cage.py` | 极客者 X2201 驾驶舱的测试框：车壳内可用空间的形状，放驾驶视角的 Ascent Lite+ 摄像头用 |
 | `x2201_fpv_mount.py` | X2201 驾驶舱内的驾驶视角图传支架：Ascent Lite+ 摄像头看出挡风玻璃，后面是图传和 25 mm 风扇，用 3M 胶粘在底盘中间走线槽两侧 |
 | `x2201_liner.py` | 从 3D 扫描（点云）算出 X2201 黑色内衬的高度图 `x2201_liner.npz`，支架用它检查有没有碰到内衬；也输出可打印的复制件 `x2201_liner_replica.stl` |
-| `camera_pod.py` | 美嘉欣 14303 车顶的 WRC 风格 WiFiLink 2 摄像头罩 |
-| `wifilink_mount.py` | 夹在 8 mm 圆杆上的 RunCam WiFiLink 2 支架 |
+| `x2201_liner_model.py` | 重新建模的 X2201 内衬（平滑曲线，不是扫描件），打印出来放进车壳试装 |
+| `x2201_interior.py` | 从扫描算出 X2201 内衬里的整个可用空间：车上所有东西都要放得进去 |
+| `x2201_datum.py` | X2201 的基准点和各坐标系（车身、底盘、KiCad 主板）之间的换算，其他 X2201 脚本都从这里取数字 |
+| `mac_case.py`、`kids_dock.py` | 两款 P4 外壳的造型方案：装在 MOZA 底座上的 1984 麦金塔造型，和儿童桌面座 |
 
 每个脚本开头的注释说明打印方向和要用的螺丝。标了 `MEASURE` 的参数，打印前要用卡尺量你自己的零件再改。共用的几何和预览函数在 `cad.py`。
 
 ```bash
-cd firmware/wheel-esp32
+cd cad
 python3 -m venv .venv
-.venv/bin/pip install manifold3d numpy trimesh matplotlib
-.venv/bin/python enclosure/p4_case.py
+.venv/bin/pip install manifold3d numpy trimesh matplotlib scipy
+.venv/bin/python p4_case.py
 ```
 
 ## X2201 主板

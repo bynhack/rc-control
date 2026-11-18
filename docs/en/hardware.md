@@ -4,27 +4,27 @@
 
 ## 3D-printed parts
 
-All models are parametric Python scripts (manifold3d) in [`firmware/wheel-esp32/enclosure`](../../firmware/wheel-esp32/enclosure). The STLs are in `enclosure/out/`. The `*_viewer.html` and `*_assembly.html` files are assembly previews you can open in a browser.
+All models are parametric Python scripts (manifold3d) in [`cad`](../../cad). The STLs are in `cad/out/`. The `*_viewer.html` and `*_assembly.html` files are assembly previews you can open in a browser.
 
 | Model | Parts |
 |---|---|
 | `p4_case.py` | A desk case for the P4 board: the screen tray `p4_tray.stl`; the stand on the MOZA base `p4_stand.stl`, with a slot for a 100 × 45 two-driver box speaker and room for the ELRS Nano; and `p4_multi_cover.stl`, which carries the 4-in-1 module on the stand's back wall |
-| `minicar_cage.py` | A test cage for the 1:28 rally car: the shape of the free room under the shell |
-| `minicar_mount.py` | A carrier for that car's FPV and radio parts, inside the shell |
 | `vtx_mount.py` | A low, fan-cooled mount for a Walksnail Avatar Ascent Lite+ VTX and its camera |
 | `x2201_cage.py` | Test cage for the Geeks X2201 cab: the room inside the shell, for a driver-view Ascent Lite+ camera |
 | `x2201_fpv_mount.py` | Driver-view FPV mount inside the X2201 cab: the Ascent Lite+ camera looks out through the windscreen, the VTX and a 25 mm fan behind it, taped either side of the chassis channel |
 | `x2201_liner.py` | Height map of the X2201 black inner liner from a 3D scan (point cloud), `x2201_liner.npz`; the mount checks against it; also a printable replica, `x2201_liner_replica.stl` |
-| `camera_pod.py` | A WRC-style roof pod for a WiFiLink 2 camera on the MJX 14303 |
-| `wifilink_mount.py` | A clamp mount for a RunCam WiFiLink 2 on an 8 mm round brace |
+| `x2201_liner_model.py` | A modelled X2201 liner (smooth curves, not the scan) to print and test in the shell |
+| `x2201_interior.py` | The whole room inside the X2201 liner, from the scan: everything that goes in the car has to fit in it |
+| `x2201_datum.py` | X2201 reference points and how the coordinate systems map (car, chassis, the main board in KiCad). The other X2201 scripts take their numbers from here |
+| `mac_case.py`, `kids_dock.py` | Two alternative P4 cases: a 1984 Macintosh look on the MOZA base, and a kids' desk stand |
 
 The comment at the top of each script says how to orient the print and which screws it takes. Parameters marked `MEASURE` should be measured on your own part with calipers before you print. The geometry and preview helpers they share are in `cad.py`.
 
 ```bash
-cd firmware/wheel-esp32
+cd cad
 python3 -m venv .venv
-.venv/bin/pip install manifold3d numpy trimesh matplotlib
-.venv/bin/python enclosure/p4_case.py
+.venv/bin/pip install manifold3d numpy trimesh matplotlib scipy
+.venv/bin/python p4_case.py
 ```
 
 ## X2201 main board

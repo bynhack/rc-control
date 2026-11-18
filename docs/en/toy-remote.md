@@ -79,7 +79,7 @@ Each channel needs three points: full one way, rest, full the other way. The val
 
 1. Open the [tuning page](development.md#tuning-page) and connect to the P4.
 2. On the **Fine-tune DAC** (精調 DAC) tab, move each channel slowly with the mouse wheel. Mark the codes where the car reaches full lock or full speed each way, and where it starts and stops moving. Rest is the middle of the span where the car doesn't move.
-3. Write the six values into the top of [`main/remote.c`](../../firmware/wheel-esp32/main/remote.c), then build and flash:
+3. Write the six values into the top of [`main/remote.c`](../../firmware/wheel-controller/main/remote.c), then build and flash:
    ```c
    #define STEER_LEFT 3320
    #define STEER_CENTER 2020

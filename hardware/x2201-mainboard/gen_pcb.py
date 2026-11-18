@@ -29,10 +29,9 @@ from pcbgen import drc, dump, fab, keepout, outline, place, save, text, zone, mm
 
 OUT = os.path.join(HERE, "x2201-mainboard.kicad_pcb")
 # 40 x 40, inside the 40 x 60 room on the chassis (40 along the car, 60 across). X runs across the car, Y along
-# it: Y = 0 is the front edge, Y = 40 the rear. Seen from above, as the test plate was printed
-# (firmware/wheel-esp32/enclosure/x2201_hole_plate.py): the M2 hole on the front suspension block's boss at the
-# rear, the locating post toward the front, 33.02 along and 7.43 across from it. The M2 screw is the only
-# fixing; the post's 3.5 mm tip only locates.
+# it: Y = 0 is the front edge, Y = 40 the rear, seen from above. The M2 hole on the front suspension block's boss,
+# the locating post toward the front, 22.02 along and 6.43 across from it, both confirmed by a printed dummy in the
+# car (2026-11-17; cad/x2201_datum.py POST). The M2 screw is the only fixing; the post's 3.5 mm tip only locates.
 W, H = 40.0, 40.0
 CORNER = 2.0
 M2_HOLE = (22.28, 29.71)    # M2 clearance, 2.4; the boss under it is 4.95 across

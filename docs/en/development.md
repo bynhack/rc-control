@@ -4,7 +4,7 @@
 
 ## Firmware layout
 
-All in [`firmware/wheel-esp32/main`](../../firmware/wheel-esp32/main):
+All in [`firmware/wheel-controller/main`](../../firmware/wheel-controller/main):
 
 | File | Role |
 |---|---|
@@ -69,10 +69,10 @@ The console is on the log port ("USB TO UART", 115200), one command per line:
 
 ## Tuning page
 
-[`tools/remote_tune.html`](../../firmware/wheel-esp32/tools/remote_tune.html) is a bench page that talks to the console. Open it in Chrome, which has Web Serial, served from a local server:
+[`tools/remote_tune.html`](../../firmware/wheel-controller/tools/remote_tune.html) is a bench page that talks to the console. Open it in Chrome, which has Web Serial, served from a local server:
 
 ```bash
-python3 -m http.server 8765 --bind 127.0.0.1 --directory firmware/wheel-esp32/tools
+python3 -m http.server 8765 --bind 127.0.0.1 --directory firmware/wheel-controller/tools
 ```
 
 Open http://localhost:8765/remote_tune.html and press Connect (連接 P4).
@@ -86,51 +86,6 @@ When you're done, press Disconnect (斷開). Otherwise the page keeps the serial
 
 - **Fonts**: `main/fonts/gen_fonts.sh <font dir>` regenerates the bitmap fonts with `lv_font_conv` (needs Node). The CJK fonts only contain the characters that appear in the sources, so run it after you add on-screen text. The font directory needs Noto Sans SC Medium, plus Saira and Barlow Condensed for the dashboard digits. Download links are at the top of the script.
 - **Dashboard images**: the static layers are drawn in `design/render/dash_render.html`. `design/render/build_assets.py` renders them in headless Chrome and writes `main/assets/*.bin`. It needs Google Chrome, Pillow and numpy.
-
-## Desktop app layout
-
-```
-src/
-  control.rs        control state and every safety rule, independent of the radio
-  config.rs         configuration file
-  protocol/crsf.rs  CRSF framing and parsing (link stats, device name, module reset)
-  backend/elrs.rs   the send thread
-  gui/mod.rs        window layout and interaction
-  gui/widgets.rs    custom widgets: gauge, steering bar, sliders, signal bars, link history
-  gui/theme.rs      colours, dark theme, fonts
-  gui/dev.rs        development helpers: snapshots, demo input
-  video/rtp.rs      RTP to H.264/H.265 frames (drops broken fragments on loss)
-  video/decoder.rs  low-latency FFmpeg decoding to RGBA
-  video/mod.rs      receive thread, statistics
-  radio/mod.rs      built-in FPV receiver: adapter choice, start, reconnect, status
-  wheel.rs          MOZA R5 / T300RS HID reading, report parsing, --probe-wheel
-native/             C++ layer: builds Aviateur's receive code, exposes a C API (rcwfb.h)
-third_party/aviateur  submodule, GPL-3.0
-vendor/             ffmpeg-sys-next 9.0.1 with Windows D3D stubs ([patch.crates-io])
-scripts/            Windows: build, deploy DLLs, bind the 8812AU to WinUSB
-```
-
-`cargo test` runs the unit tests for the protocol, the mapping, the safety rules and the wheel report parser. They don't need any hardware.
-
-### Environment variables for UI work
-
-- `RC_CONTROL_SNAPSHOT=out.bmp`: about 1.5 s after start, the app saves the window to an image. It draws the image itself, so no screen recording permission is needed.
-- `RC_CONTROL_DEMO=steer,throttle[,low|mid|high]`: fake input for checking the gauges, values −1 to 1. It is **disabled as soon as a device is connected**, so pair it with a port that doesn't exist:
-
-```bash
-printf '[elrs]\nport = "/dev/none"\n' > /tmp/demo.toml
-RC_CONTROL_DEMO="0.45,0.85,high" RC_CONTROL_SNAPSHOT=/tmp/ui.bmp ./target/release/rc-control --config /tmp/demo.toml
-```
-
-### Desktop app build notes
-
-- `vendor/ffmpeg-sys-next-9.0.1`: when bindgen parses `<d3d11.h>`, it pulls in `__tile1024i_str` from `amxintrin.h`, whose `packed` + `align` combination rustc rejects (E0587 / E0080). Empty d3d11 / d3d12 / d3d9 / dxva2 stubs in `hwcontext_stubs` avoid it, used through `[patch.crates-io]`.
-- MinGW fixes for Aviateur are applied to copies of the files at build time, so the submodule stays unchanged (see `patch_staged` in `native/CMakeLists.txt`):
-  - MinGW already has `clock_gettime` (winpthreads), so the inline one in `net_compat.h` is only used elsewhere.
-  - The weak getopt globals in `compat/getopt.h` are defined twice by the PE linker, so they are left out on MinGW.
-  - `net_compat.h` blanks `__attribute__` on Windows, which drops `packed` from the wfb-ng headers, and the stand-in only restored 1-byte packing for MSVC. MinGW then padded `wblock_hdr_t` (16 bytes instead of 9) and every frame failed to decrypt. `wifibroadcast.hpp` now gets `#pragma pack` on every Windows compiler.
-- An upstream fix, applied the same way: Aviateur doesn't close UDP 8001 when the link stops, and starting it again in the same process crashes. The copied `tx_frame.cpp` gets the missing close.
-- `native/CMakeLists.txt` only passes `/utf-8` to MSVC. `build.rs` links static libstdc++ / gcc_eh and ws2_32 for MinGW.
 
 ## Protocol notes
 

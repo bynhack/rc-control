@@ -79,7 +79,7 @@ DAC 會把停止位置存進 EEPROM，所以 P4 還在開機時，車也不會�
 
 1. 打開[調試頁面](development.md#調試頁面)，連接 P4。
 2. 在「精調 DAC」分頁，用滑鼠滾輪慢慢調每一路。記下車子兩邊打到底或跑到最快的碼，以及車剛開始動、剛停下的碼。停止點取車不動那一段的中間。
-3. 把六個值寫進 [`main/remote.c`](../../firmware/wheel-esp32/main/remote.c) 開頭，再編譯燒錄：
+3. 把六個值寫進 [`main/remote.c`](../../firmware/wheel-controller/main/remote.c) 開頭，再編譯燒錄：
    ```c
    #define STEER_LEFT 3320
    #define STEER_CENTER 2020
