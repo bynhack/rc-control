@@ -115,13 +115,13 @@ P4 是預設目標，在 `firmware/wheel-esp32` 直接 `idf.py build`。程式�
 | v5 | 自製 ELRS（C3 + SX1280 + AT2401C）+ C3 主控 | 封存 |
 | v6 | S3 裸晶片 + 板載天線、陀螺儀、雙面貼片 | 放棄。一次整合太多，初版風險過高；另有 25 個過孔在焊盤上 |
 | v7 | S3-Zero + EP2 手焊 | 被 v8 取代，圖傳插座是錯的 4P |
-| **v8** | S3-MINI-1 貼片，EP2 手焊，EP2 直接接電調 | 暫緩，下一版的基礎 |
+| v8 | S3-MINI-1 貼片，EP2 手焊，EP2 直接接電調 | 階段 0 驗證後不再需要 |
+| v9 | 外接電調，板載 5V 3A 降壓 | 被取代；Q1 防反接的 drain、source 接反 |
+| **主板**（原 v10） | SuperMini、板載 DRV8874 電調、板載 BEC、側插 ZH 插座、按鈕開關機 | 2026-11-16 確認，`hardware/x2201-mainboard` |
 
-後續路徑見 [hardware/ROADMAP.md](../hardware/ROADMAP.md)，v3～v7 已移到 `hardware/archive/`。
+2026-11-16 起，硬體方案寫在 [hardware/PLAN.md](../hardware/PLAN.md)，只保留一塊主板，v3～v9 已從目錄刪除（git commit `56bd000` 之前還找得到）。後續路徑見 [hardware/ROADMAP.md](../hardware/ROADMAP.md)。
 
-使用者對 v8 的要求：第一版盡量精簡，冗餘留待後續版本。車燈、溫度偵測、風扇調速、陀螺儀都已拿掉。
-
-選擇 EP2 直接接電調（方案 A）的原因：這條控制鏈路已經跑通，S3 當機也不影響開車。代價是 EP2 在 PWM 模式下沒有回傳路徑，電量只能走圖傳 OSD。
+以下是 v8 時的決定，已被取代，留作紀錄：v8 第一版盡量精簡，拿掉了車燈、溫度偵測、風扇調速、陀螺儀；EP2 以 PWM 直接接電調（方案 A），因為這條鏈路已經跑通，S3 當機也不影響開車。階段 0 驗證 S3 隔在中間不會讓 EP2 卡死之後，改回 EP2 → CRSF → S3。
 
 ## FPV 支架與外殼（`firmware/wheel-esp32/enclosure`）
 

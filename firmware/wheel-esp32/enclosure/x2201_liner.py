@@ -34,26 +34,22 @@ from manifold3d import Manifold, Mesh, OpType
 
 from cad import OUT, box, preview, to_trimesh
 from x2201_cage import L, Z_COWL, Z_WS_TOP, WS_RUN, along_x, section
+# Key points off the scan, kept in x2201_datum.py, under the names the liner scripts use.
+from x2201_datum import LINER_BACK_TUBES as BACK_TUBES
+from x2201_datum import LINER_BAR_HOLE as BAR_HOLE
+from x2201_datum import LINER_BAR_HOLE_D as BAR_HOLE_D
+from x2201_datum import LINER_FRONT_HOLES as FRONT_HOLES
+from x2201_datum import LINER_HOLE_D as HOLE_D
+from x2201_datum import LINER_ROOF_TOP as ROOF_TOP
+from x2201_datum import LINER_SLOTS_X as SLOTS_X
+from x2201_datum import LINER_SLOTS_Y as SLOTS_Y
+from x2201_datum import LINER_TUBE_OD as TUBE_OD
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 NPZ = os.path.join(HERE, "x2201_liner.npz")
 LINER_T = 1.0  # MEASURE: the liner's wall
 CELL = 1.0
 REPLICA_T = 1.2  # the replica's wall, square to its surface
-
-# Key points, read off the full scan (Mesh 1111) and moved into the cage's
-# coordinates (the scan fitted onto x2201_liner.npz: 0.16 mm median). z is the
-# liner's top there. CHECK with calipers: the hole spacings and diameters.
-FRONT_HOLES = (88.4, 20.1)  # the front ears' screw holes, +-y; the ears' top at z 4.8
-BACK_TUBES = (-20.9, 22.1)  # the back screw tubes, +-y; their top at z 6.8, down to the chassis
-HOLE_D = 4.6  # all four (the scan's are 4.5 to 5.5 across, ragged)
-TUBE_OD = 7.0
-BAR_HOLE = (35.1, 0.0)  # the screw hole in the bar between the roof's slots, on the roof at z 23.7
-BAR_HOLE_D = 2.2
-SLOTS_X = (16.4, 52.8)  # the roof's two slots (the windows), corners rounded ~2.5
-SLOTS_Y = (3.9, 18.9)  # |y|
-ROOF_TOP = (30.9, 23.9)  # x, z: the liner's highest point, on the centre line
-
 
 def resting(mesh):
     """A mesh of the liner alone: stood on the plane it rests on (the

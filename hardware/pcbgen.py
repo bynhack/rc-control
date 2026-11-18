@@ -14,7 +14,7 @@ import subprocess
 import pcbnew
 
 FP = "/Applications/KiCad/KiCad.app/Contents/SharedSupport/footprints/"
-LIB = os.path.join(os.path.dirname(os.path.abspath(__file__)), "lib")  # footprints KiCad doesn't ship (Espressif's)
+LIB = os.path.join(os.path.dirname(os.path.abspath(__file__)), "lib")  # symbols KiCad doesn't ship
 CLI = "/Applications/KiCad/KiCad.app/Contents/MacOS/kicad-cli"
 W_SIG, W_PWR = 0.3, 0.6
 VIA_D, VIA_HOLE = 0.6, 0.3
@@ -192,8 +192,8 @@ def zone(name, layer, x0, y0, x1, y1, chamfer=0.0):
     return z
 
 
-def keepout(x0, y0, x1, y1):
-    """No copper at all (tracks, vias, pours), every copper layer: an antenna."""
+def keepout(x0, y0, x1, y1, pts=None):
+    """No copper at all (tracks, vias, pours), every copper layer: an antenna. `pts`: a polygon instead."""
     z = pcbnew.ZONE(board)
     z.SetIsRuleArea(True)
     z.SetDoNotAllowTracks(True)
@@ -208,7 +208,7 @@ def keepout(x0, y0, x1, y1):
     z.SetLayerSet(ls)
     o = z.Outline()
     o.NewOutline()
-    for x, y in ((x0, y0), (x1, y0), (x1, y1), (x0, y1)):
+    for x, y in pts or ((x0, y0), (x1, y0), (x1, y1), (x0, y1)):
         o.Append(mm(x), mm(y))
     board.Add(z)
     return z
@@ -338,9 +338,10 @@ for _v in ("fan", "IR LED", "battery", "front light", "rear light", "NTC"):
     LCSC[(f"ZH1.5 2P ({_v})", "JST_ZH_B2B-ZR-SM4-TF_1x02-1MP_P1.50mm_Vertical")] = "C265284"
 
 
-def fab(path, fitted="QCRDJHULYF"):
+def fab(path, fitted="QCRDJHULYF", tht=()):
     """Gerbers, drill, BOM and placement for JLCPCB (SMT assembly on the top):
-    only the parts whose refs start with one of `fitted`, not the bare pads."""
+    only the parts whose refs start with one of `fitted`, not the bare pads. `tht`: through-hole parts JLC
+    solders too (its THT assembly)."""
     out = os.path.dirname(path)
     g = os.path.join(out, "gerber")
     os.makedirs(g, exist_ok=True)
@@ -350,7 +351,7 @@ def fab(path, fitted="QCRDJHULYF"):
     subprocess.run([CLI, "pcb", "export", "drill", "--excellon-separate-th", "-o", g + "/", path], check=True,
                    capture_output=True)
     parts = [m for m in board.GetFootprints() if m.GetReference()[0] in fitted
-             and (m.GetAttributes() & pcbnew.FP_SMD or m.GetValue() == "M2 SMT nut")]
+             and (m.GetAttributes() & pcbnew.FP_SMD or m.GetValue() == "M2 SMT nut" or m.GetReference() in tht)]
     with open(os.path.join(out, "cpl.csv"), "w", newline="") as f:
         w = csv.writer(f)
         w.writerow(["Designator", "Mid X", "Mid Y", "Layer", "Rotation"])

@@ -29,6 +29,7 @@ Drive RC cars with a sim-racing wheel and pedals. Plug the wheel into a 7" ESP32
 | [Radios](docs/en/radios.md) | ExpressLRS, MULTI 4-in-1, the toy remote |
 | [Converting a toy remote](docs/en/toy-remote.md) | Driving a toy car's stock remote with an MCP4728 DAC |
 | [Hardware](docs/en/hardware.md) | 3D-printed parts and the X2201 carrier board |
+| [Lap-timing arch](docs/en/lap-arch.md) | The finish-line arch: receivers, wiring, firmware, lap events |
 | [Desktop app](docs/en/desktop-app.md) | PC version: ELRS control, FPV video, Windows build |
 | [Development](docs/en/development.md) | Code layout, serial console, tuning page, regenerating fonts and assets |
 

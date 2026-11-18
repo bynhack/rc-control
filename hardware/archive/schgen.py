@@ -1,1 +1,0 @@
-../schgen.py

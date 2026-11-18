@@ -1,0 +1,27 @@
+menu "Lap arch"
+
+config LAP_IR_GPIOS
+    string "Receiver input GPIOs"
+    default "4"
+    help
+        Comma-separated GPIOs, each with its own decoder. One GPIO: every
+        receiver wired-AND onto it. Several: one receiver (or one group of
+        wired-AND receivers) per GPIO, so two cars side by side under
+        different receivers are both read. Up to 8.
+
+config LAP_SIM_GPIO
+    int "Simulator IR LED GPIO (-1: none)"
+    default 10
+    help
+        The "sim" command sends transponder frames here, as 38 kHz bursts:
+        an IR LED with a series resistor, pointed at the receivers.
+
+config LAP_PASS_GAP_MS
+    int "A pass ends after this long without a frame (ms)"
+    default 200
+
+config LAP_MIN_LAP_MS
+    int "Crossings closer than this are not laps (ms)"
+    default 2000
+
+endmenu

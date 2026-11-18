@@ -29,6 +29,7 @@
 | [發射方式](docs/zh-TW/radios.md) | ExpressLRS、四合一 MULTI、玩具遙控器 |
 | [改裝玩具遙控器](docs/zh-TW/toy-remote.md) | 用 MCP4728 DAC 控制玩具車的原裝遙控器 |
 | [硬體](docs/zh-TW/hardware.md) | 3D 列印件和 X2201 轉接板 |
+| [計圈拱門](docs/zh-TW/lap-arch.md) | 終點拱門：接收頭、接線、韌體、圈速事件 |
 | [電腦版](docs/zh-TW/desktop-app.md) | 電腦控制 ELRS、圖傳、Windows 編譯 |
 | [開發](docs/zh-TW/development.md) | 程式結構、串口指令、調試頁面、重新產生字型和圖片 |
 
