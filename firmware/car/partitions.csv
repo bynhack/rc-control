@@ -1,0 +1,8 @@
+# The car's 4 MB flash (ESP32-S3FH4R2), as in docs/platform-plan.md section 5.
+# Name,    Type, SubType,  Offset,   Size
+nvs,       data, nvs,      0x9000,   0x4000
+otadata,   data, ota,      0xd000,   0x2000
+phy_init,  data, phy,      0xf000,   0x1000
+ota_0,     app,  ota_0,    0x10000,  0x1F0000
+ota_1,     app,  ota_1,    0x200000, 0x1F0000
+coredump,  data, coredump, 0x3F0000, 0x10000
